@@ -1,4 +1,5 @@
-# Build firmware on push/PR; upload binaries as a short-lived artifact.
+# Build the firmware on every push/PR. On main it also publishes the web setup
+# and update page (web/) together with the fresh firmware to GitHub Pages.
 name: Build
 
 on:
@@ -10,6 +11,9 @@ on:
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   firmware:
@@ -53,3 +57,59 @@ jobs:
             .pio/build/supermini/firmware.bin
             .pio/build/supermini/bootloader.bin
             .pio/build/supermini/partitions.bin
+
+      - name: Assemble web site
+        run: |
+          VERSION=$(sed -n 's/^constexpr char kFirmwareVersion\[\] = "\([^"]*\)";.*/\1/p' include/config.h | head -n 1)
+          test -n "$VERSION"
+          mkdir -p site
+          cp web/index.html web/tz.json web/tz-LICENSE.txt site/
+          cp .pio/build/supermini/firmware.bin site/firmware.bin
+          cp .pio/build/supermini/firmware-merged.bin site/firmware-merged.bin
+          python3 - "$VERSION" <<'PY'
+          import json, sys
+          version = sys.argv[1]
+
+          def manifest(name, parts):
+              return {
+                  "name": name,
+                  "version": version,
+                  "new_install_prompt_erase": False,
+                  "builds": [{"chipFamily": "ESP32-C3", "parts": parts}],
+              }
+
+          def write(path, data):
+              with open(path, "w", encoding="utf-8") as f:
+                  json.dump(data, f, indent=2)
+
+          # Update: application only (0x10000). Settings live in a different flash area and survive.
+          write("site/manifest-update.json",
+                manifest("Plane Radar update", [{"path": "firmware.bin", "offset": 65536}]))
+          # Full install: bootloader + partitions + app as one image at 0x0. Wipes settings.
+          write("site/manifest-full.json",
+                manifest("Plane Radar full install", [{"path": "firmware-merged.bin", "offset": 0}]))
+          write("site/version.json", {"version": version})
+          PY
+          ls -l site
+
+      - name: Upload site for GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    # Needs: repository Settings -> Pages -> Source = "GitHub Actions".
+    if: github.event_name != 'pull_request'
+    needs: firmware
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
