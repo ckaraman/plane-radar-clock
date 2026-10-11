@@ -66,6 +66,8 @@ jobs:
           cp web/index.html web/tz.json web/tz-LICENSE.txt site/
           cp .pio/build/supermini/firmware.bin site/firmware.bin
           cp .pio/build/supermini/firmware-merged.bin site/firmware-merged.bin
+          cp .pio/build/supermini/bootloader.bin site/bootloader.bin
+          cp .pio/build/supermini/partitions.bin site/partitions.bin
           python3 - "$VERSION" <<'PY'
           import json, sys
           version = sys.argv[1]
@@ -74,7 +76,7 @@ jobs:
               return {
                   "name": name,
                   "version": version,
-                  "new_install_prompt_erase": False,
+                  "new_install_prompt_erase": True,
                   "builds": [{"chipFamily": "ESP32-C3", "parts": parts}],
               }
 
@@ -82,9 +84,17 @@ jobs:
               with open(path, "w", encoding="utf-8") as f:
                   json.dump(data, f, indent=2)
 
-          # Update: application only (0x10000). Settings live in a different flash area and survive.
+          # Update: bootloader + partition table + application. The settings (NVS at 0x9000) are
+          # not touched. Writing the boot parts too means the device still starts even if the
+          # user ticks "erase" in the installer dialog (which only loses the settings).
+          # ESP Web Tools erases the whole flash by default for firmware without Improv Serial,
+          # so new_install_prompt_erase must be true to get the checkbox (left unticked).
           write("site/manifest-update.json",
-                manifest("Plane Radar update", [{"path": "firmware.bin", "offset": 65536}]))
+                manifest("Plane Radar update", [
+                    {"path": "bootloader.bin", "offset": 0},
+                    {"path": "partitions.bin", "offset": 32768},
+                    {"path": "firmware.bin", "offset": 65536},
+                ]))
           # Full install: bootloader + partitions + app as one image at 0x0. Wipes settings.
           write("site/manifest-full.json",
                 manifest("Plane Radar full install", [{"path": "firmware-merged.bin", "offset": 0}]))
