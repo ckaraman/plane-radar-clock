@@ -8,7 +8,21 @@ namespace config {
 
 /** Shown on the web setup page; the build copies it into the update manifest.
  *  Bump it for every release you publish. Keep this declaration on a single line. */
-constexpr char kFirmwareVersion[] = "1.2.3";
+constexpr char kFirmwareVersion[] = "1.2.4";
+
+// --- USB setup page address shown on the setup screen ---
+// CI writes include/setup_url.h with the GitHub Pages address of this repository
+// ("owner.github.io/repo"). Without it (local builds) the old Wi-Fi-only screen is used.
+#if defined(__has_include)
+#if __has_include("setup_url.h")
+#include "setup_url.h"
+#endif
+#endif
+#ifdef SETUP_PAGE_URL
+constexpr char kSetupPageUrl[] = SETUP_PAGE_URL;
+#else
+constexpr char kSetupPageUrl[] = "";
+#endif
 
 // --- Wi-Fi portal ---
 constexpr char kPortalApName[] = "PlaneRadar-Setup";
