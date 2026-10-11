@@ -55,6 +55,19 @@ int lineHeightGfx(const lgfx::GFXfont* font) {
   return tft.fontHeight();
 }
 
+/** Largest smooth-font size <= wanted at which the text fits max_w pixels. */
+float fitVlwSize(const char* text, float wanted, int max_w) {
+  float size = wanted;
+  while (size > 0.5f) {
+    displayFontSetSmoothSize(tft, size);
+    if (tft.textWidth(text) <= max_w) {
+      break;
+    }
+    size -= 0.05f;
+  }
+  return size;
+}
+
 int lineHeightVlw(float size) {
   displayFontSetSmoothSize(tft, size);
   return tft.fontHeight();
@@ -207,6 +220,48 @@ void statusScreenConnectingTick() {
 }
 
 void statusScreenPortal() {
+  if (config::kSetupPageUrl[0] != '\0') {
+    // USB setup page address, split into host and path so each line stays large.
+    static char host[48];
+    static char path[48];
+    const char* slash = strchr(config::kSetupPageUrl, '/');
+    if (slash != nullptr) {
+      const size_t n = static_cast<size_t>(slash - config::kSetupPageUrl);
+      snprintf(host, sizeof(host), "%.*s", static_cast<int>(n < sizeof(host) - 1 ? n : sizeof(host) - 1),
+               config::kSetupPageUrl);
+      snprintf(path, sizeof(path), "%s", slash);
+    } else {
+      snprintf(host, sizeof(host), "%s", config::kSetupPageUrl);
+      path[0] = '\0';
+    }
+    const float host_size = displayFontIsSmooth() ? fitVlwSize(host, 1.0f, 200) : 1.0f;
+    const float path_size = displayFontIsSmooth() ? fitVlwSize(path, 1.0f, 200) : 1.0f;
+    const TextLine with_path[] = {
+        {"Setup", 1.1f, &kPortalGfxTitle},
+        {"Open on a computer:", 0.85f, &kPortalGfxBody},
+        {host, host_size, &kConnectingGfxDetail},
+        {path, path_size, &kConnectingGfxDetail},
+        {"(Chrome/Edge, USB)", 0.8f, &kPortalGfxBody},
+        {"or join Wi-Fi:", 0.8f, &kPortalGfxBody},
+        {config::kPortalApName, 0.85f, &kPortalGfxBody},
+    };
+    const TextLine no_path[] = {
+        {"Setup", 1.1f, &kPortalGfxTitle},
+        {"Open on a computer:", 0.85f, &kPortalGfxBody},
+        {host, host_size, &kConnectingGfxDetail},
+        {"(Chrome/Edge, USB)", 0.8f, &kPortalGfxBody},
+        {"or join Wi-Fi:", 0.8f, &kPortalGfxBody},
+        {config::kPortalApName, 0.85f, &kPortalGfxBody},
+    };
+    if (path[0] != '\0') {
+      drawTextBlock(config::kColorYellow, config::kTextOnYellow, with_path,
+                    sizeof(with_path) / sizeof(with_path[0]));
+    } else {
+      drawTextBlock(config::kColorYellow, config::kTextOnYellow, no_path,
+                    sizeof(no_path) / sizeof(no_path[0]));
+    }
+    return;
+  }
   const TextLine lines[] = {
       {"Wi-Fi setup", 1.15f, &kPortalGfxTitle},
       {"1. Join network:", 1.05f, &kPortalGfxBody},
