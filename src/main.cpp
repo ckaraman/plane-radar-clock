@@ -116,10 +116,13 @@ void adsbFetchTask(void*) {
 }  // namespace
 
 void setup() {
+  // The USB setup page sends long lines in a burst; the default 256-byte RX
+  // buffer could overflow between two polls. Must be set before begin().
+  Serial.setRxBufferSize(1024);
   Serial.begin(115200);
   delay(500);
   Serial.println();
-  Serial.println("Plane Radar");
+  Serial.printf("Plane Radar v%s\n", config::kFirmwareVersion);
 
   bootButtonInit();
   displayInit();

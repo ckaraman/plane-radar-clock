@@ -6,6 +6,10 @@
 
 namespace config {
 
+/** Shown on the web setup page; the build copies it into the update manifest.
+ *  Bump it for every release you publish. Keep this declaration on a single line. */
+constexpr char kFirmwareVersion[] = "1.2.0";
+
 // --- Wi-Fi portal ---
 constexpr char kPortalApName[] = "PlaneRadar-Setup";
 constexpr char kPortalIp[] = "192.168.4.1";

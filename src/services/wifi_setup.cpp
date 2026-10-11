@@ -17,6 +17,7 @@
 #include "config.h"
 #include "services/clock_service.h"
 #include "services/radar_location.h"
+#include "services/serial_setup.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
 
@@ -319,6 +320,7 @@ bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
       return true;
     }
     bootButtonPollLongPress();
+    services::serial_setup::poll();
     statusScreenConnectingTick();
     delay(config::kWifiConnectingFrameMs);
   }
@@ -397,6 +399,7 @@ bool openConfigPortal() {
   s_wm.startConfigPortal(config::kPortalApName);
   while (s_wm.getConfigPortalActive()) {
     bootButtonPollLongPress();
+    services::serial_setup::poll();  // USB setup page can finish the job too
     if (s_wm.process()) {
       return true;
     }
@@ -474,6 +477,7 @@ bool wifiReconnect() {
 }
 
 void wifiLoop() {
+  services::serial_setup::poll();
   ensureWifiManager();
   if (wifiLinkUp()) {
     if (!s_wm.getWebPortalActive() && !s_wm.getConfigPortalActive()) {

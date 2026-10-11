@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plane Radar Kurulum</title>
+<meta name="description" content="Plane Radar cihazını USB ile bağlayıp WiFi, konum ve saat ayarlarını yapın, yazılımı güncelleyin.">
+<style>
+  :root {
+    --bg: #f4f6f4; --card: #ffffff; --text: #17201b; --muted: #5b6a61; --line: #d9e0db;
+    --accent: #14803c; --accent-text: #ffffff; --accent-soft: #e3f3e8;
+    --warn-bg: #fff4d6; --warn-text: #6b4a00; --err-bg: #fde4e1; --err-text: #8a1c12;
+    --ok-bg: #e0f3e6; --ok-text: #0f5a2a; --info-bg: #e6eef8; --info-text: #1d3f6e;
+    --field: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1411; --card: #151d18; --text: #e6efe9; --muted: #9db0a4; --line: #2a3830;
+      --accent: #3ec06b; --accent-text: #06210f; --accent-soft: #17301f;
+      --warn-bg: #3a2f10; --warn-text: #f3d891; --err-bg: #3d1c19; --err-text: #f6b9b2;
+      --ok-bg: #12301d; --ok-text: #a9e6bf; --info-bg: #14263d; --info-text: #b5d0f2;
+      --field: #0f1612;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 56px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 0 0 16px; }
+  .card > p.hint { color: var(--muted); margin: 0 0 14px; font-size: .95rem; }
+  .step { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center;
+    border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: .9rem; margin-right: 8px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  label { display: block; font-weight: 600; margin: 14px 0 4px; }
+  .sub { font-weight: 400; color: var(--muted); font-size: .9rem; }
+  input[type=text], input[type=password], input[type=number], input[type=search], select {
+    width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; color: var(--text);
+    background: var(--field); border: 1px solid var(--line); border-radius: 10px;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible, a:focus-visible {
+    outline: 3px solid var(--accent); outline-offset: 2px;
+  }
+  .btn { min-height: 44px; padding: 8px 18px; font: inherit; font-weight: 600; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .btn.danger { color: var(--err-text); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .msg { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; font-size: .95rem; }
+  .msg[hidden] { display: none; }
+  .msg.info { background: var(--info-bg); color: var(--info-text); }
+  .msg.ok { background: var(--ok-bg); color: var(--ok-text); }
+  .msg.warn { background: var(--warn-bg); color: var(--warn-text); }
+  .msg.err { background: var(--err-bg); color: var(--err-text); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .chip { background: var(--accent-soft); border-radius: 999px; padding: 3px 12px; font-size: .9rem; }
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  fieldset:disabled { opacity: .45; }
+  .checks label { display: flex; gap: 10px; align-items: center; font-weight: 400; margin: 10px 0 0; min-height: 28px; }
+  .checks input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .results { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+  .results button { width: 100%; text-align: left; min-height: 44px; padding: 8px 12px; font: inherit; color: var(--text);
+    background: var(--field); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .results button:hover { border-color: var(--accent); }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+  small, .small { color: var(--muted); font-size: .85rem; }
+  .pw { display: flex; gap: 8px; }
+  code { background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; font-size: .9em; }
+  footer { color: var(--muted); font-size: .85rem; margin-top: 24px; }
+  esp-web-install-button { display: inline-block; }
+  esp-web-install-button button { cursor: pointer; }
+  /* If the install component cannot load, do not show its fallback messages. */
+  esp-web-install-button:not(:defined) > [slot="unsupported"],
+  esp-web-install-button:not(:defined) > [slot="not-allowed"] { display: none; }
+  @media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Plane Radar kurulum</h1>
+  <p class="lead">Cihazı USB ile bilgisayara bağlayın, WiFi ve konumunuzu girin. Yazılım güncellemek için de aynı sayfayı kullanın.</p>
+
+  <noscript><div class="msg err">Bu sayfa JavaScript gerektirir.</div></noscript>
+  <div id="unsupported" class="msg warn" hidden>
+    Bu tarayıcı USB cihazlarla konuşamıyor. Lütfen bilgisayarınızda <strong>Google Chrome</strong> veya
+    <strong>Microsoft Edge</strong> ile açın. (Telefon, Safari ve Firefox desteklenmiyor.)
+  </div>
+
+  <section class="card" aria-labelledby="h-connect">
+    <h2 id="h-connect"><span class="step">1</span>Cihazı bağlayın</h2>
+    <p class="hint">Cihazı USB kablosuyla bilgisayara takın, sonra düğmeye basıp açılan listeden cihazı seçin.</p>
+    <div class="row">
+      <button type="button" class="btn primary" id="btn-connect">Cihaza bağlan</button>
+      <button type="button" class="btn" id="btn-disconnect" hidden>Bağlantıyı kes</button>
+    </div>
+    <div class="chips" id="device-chips" hidden></div>
+    <div class="msg info" id="msg-connect" hidden role="status" aria-live="polite"></div>
+    <details id="connect-help">
+      <summary>Cihaz listede görünmüyor</summary>
+      <p class="small">
+        • Kabloyu kontrol edin: bazı kablolar yalnızca şarj içindir, veri kablosu gerekir.<br>
+        • Cihazın <strong>BOOT</strong> düğmesine basılı tutarak USB'yi takın, sonra tekrar deneyin.<br>
+        • Arduino IDE, seri monitör gibi bir program ya da başka bir sekme cihazı kullanıyor olabilir, kapatın.<br>
+        • <button type="button" class="btn" id="btn-connect-all">Tüm USB cihazlarını listele</button>
+      </p>
+    </details>
+  </section>
+
+  <form class="card" id="settings" aria-labelledby="h-settings" novalidate>
+    <h2 id="h-settings"><span class="step">2</span>Ayarlar</h2>
+    <fieldset id="settings-fields" disabled>
+      <p class="hint" id="settings-hint">Önce 1. adımda cihaza bağlanın.</p>
+
+      <label for="ssid">WiFi ağı <span class="sub">(yalnızca 2,4 GHz ağlar)</span></label>
+      <div class="row">
+        <input type="text" id="ssid" list="nets" autocomplete="off" spellcheck="false" style="flex:1 1 220px" placeholder="Ağ adı">
+        <button type="button" class="btn" id="btn-scan">Ağları tara</button>
+      </div>
+      <datalist id="nets"></datalist>
+      <div class="msg info" id="msg-scan" hidden role="status" aria-live="polite"></div>
+
+      <label for="pass">WiFi şifresi</label>
+      <div class="pw">
+        <input type="password" id="pass" autocomplete="off" spellcheck="false" placeholder="Şifresiz ağlarda boş bırakın">
+        <button type="button" class="btn" id="btn-showpass" aria-pressed="false">Göster</button>
+      </div>
+      <small id="wifi-keep" hidden>Cihaz şu an bir ağa bağlı. Ağ adını boş bırakırsanız mevcut bağlantı korunur.</small>
+
+      <label for="city">Konum <span class="sub">(radarın merkezi; şehir merkezi yeterlidir, tam adres gerekmez)</span></label>
+      <div class="row">
+        <input type="search" id="city" placeholder="Şehir ya da ilçe ara, örn. Bakırköy" style="flex:1 1 220px" autocomplete="off">
+        <button type="button" class="btn" id="btn-search">Ara</button>
+        <button type="button" class="btn" id="btn-geo">Konumumu kullan</button>
+      </div>
+      <ul class="results" id="results"></ul>
+      <div class="msg info" id="msg-loc" hidden role="status" aria-live="polite"></div>
+
+      <div class="grid2">
+        <div>
+          <label for="lat">Enlem</label>
+          <input type="number" id="lat" step="0.0001" min="-90" max="90" inputmode="decimal" placeholder="41.0082">
+        </div>
+        <div>
+          <label for="lon">Boylam</label>
+          <input type="number" id="lon" step="0.0001" min="-180" max="180" inputmode="decimal" placeholder="28.9784">
+        </div>
+      </div>
+      <small><a id="map-link" href="https://www.openstreetmap.org/" target="_blank" rel="noopener">Haritada kontrol et</a></small>
+
+      <label for="tz">Saat dilimi</label>
+      <select id="tz"></select>
+      <small id="tz-posix"></small>
+
+      <div class="checks">
+        <label><input type="checkbox" id="opt-clock" checked> Gökyüzünde uçak yokken saati göster</label>
+        <label><input type="checkbox" id="opt-miles"> Mesafeleri mil olarak göster</label>
+        <label><input type="checkbox" id="opt-runways" checked> Havalimanı pistlerini göster</label>
+      </div>
+
+      <div class="row" style="margin-top:18px">
+        <button type="submit" class="btn primary" id="btn-save">Cihaza kaydet</button>
+      </div>
+      <div class="msg info" id="msg-save" hidden role="status" aria-live="polite"></div>
+    </fieldset>
+  </form>
+
+  <section class="card" aria-labelledby="h-update">
+    <h2 id="h-update"><span class="step">3</span>Yazılımı güncelle</h2>
+    <p class="hint">Güncelleme yalnızca yazılımı yeniler; WiFi, konum ve diğer ayarlarınız silinmez.</p>
+    <div class="msg info" id="msg-version" hidden role="status" aria-live="polite"></div>
+    <div class="row" style="margin-top:12px">
+      <esp-web-install-button id="install-update" manifest="manifest-update.json">
+        <button slot="activate" class="btn primary" type="button">Yazılımı güncelle</button>
+        <span slot="unsupported" class="msg warn">Bu tarayıcı desteklenmiyor. Bilgisayarda Chrome veya Edge kullanın.</span>
+        <span slot="not-allowed" class="msg warn">Güncelleme için bu sayfa https:// adresinden açılmalı.</span>
+      </esp-web-install-button>
+    </div>
+    <p class="small">Güncelleme sırasında bir USB cihaz listesi açılır; cihazı seçin. Bittiğinde 1. adımdan yeniden bağlanabilirsiniz.</p>
+
+    <details>
+      <summary>Gelişmiş</summary>
+      <p class="small">Cihaz hiç yanıt vermiyorsa tam kurulum yapın. <strong>Bu işlem tüm ayarları siler</strong>; sonra 2. adımdan yeniden girmeniz gerekir.</p>
+      <div class="row">
+        <esp-web-install-button id="install-full" manifest="manifest-full.json">
+          <button slot="activate" class="btn" type="button">Tam kurulum (ayarlar silinir)</button>
+          <span slot="unsupported" class="msg warn">Bu tarayıcı desteklenmiyor.</span>
+          <span slot="not-allowed" class="msg warn">Bu sayfa https:// adresinden açılmalı.</span>
+        </esp-web-install-button>
+        <button type="button" class="btn danger" id="btn-reset" disabled>Ayarları sıfırla</button>
+      </div>
+      <p class="small">“Ayarları sıfırla” bağlı cihazdaki WiFi, konum ve birim ayarlarını siler ve cihazı yeniden başlatır.</p>
+    </details>
+  </section>
+
+  <footer>
+    Şehir araması <a href="https://open-meteo.com/en/docs/geocoding-api" target="_blank" rel="noopener">Open-Meteo</a> servisini kullanır;
+    girdiğiniz yer adı oraya gönderilir, başka hiçbir bilgi paylaşılmaz. WiFi şifresi yalnızca USB üzerinden cihaza yazılır.
+    Saat dilimi tablosu: <a href="https://github.com/nayarsystems/posix_tz_db" target="_blank" rel="noopener">posix_tz_db</a> (MIT).
+  </footer>
+</main>
+
+<script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
+<script>
+(() => {
+  'use strict';
+
+  const $ = (s) => document.querySelector(s);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const DEFAULT_LAT = 52.3676, DEFAULT_LON = 4.9041; // firmware default (Amsterdam): treated as "not set yet"
+
+  const state = {
+    port: null, reader: null, readDone: null, pending: null,
+    connected: false, device: null, zones: {}, latest: null, expectingDrop: false,
+  };
+
+  function setMsg(el, kind, text) {
+    el.className = 'msg ' + kind;
+    el.textContent = text || '';
+    el.hidden = !text;
+  }
+
+  // ---------------------------------------------------------------- serial
+  async function openPort(port) {
+    await port.open({ baudRate: 115200, bufferSize: 16384 });
+    // Plain open must not reset the chip into its boot loader.
+    try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch (_) { /* optional */ }
+    state.port = port;
+    startReading(port);
+  }
+
+  function startReading(port) {
+    const reader = port.readable.getReader();
+    state.reader = reader;
+    state.readDone = (async () => {
+      let buf = '';
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, nl).replace(/\r$/, '');
+            buf = buf.slice(nl + 1);
+            onLine(line);
+          }
+          if (buf.length > 20000) buf = buf.slice(-2000); // endless log text without newlines
+        }
+      } catch (_) { /* unplugged or closed */ }
+      try { reader.releaseLock(); } catch (_) { /* already released */ }
+    })();
+  }
+
+  function onLine(line) {
+    const at = line.indexOf('PR:');
+    if (at < 0) return; // ordinary firmware log text
+    const m = /^PR:([A-Z]+)\s*(.*)$/.exec(line.slice(at));
+    if (!m) return;
+    let data = {};
+    try { if (m[2]) data = JSON.parse(m[2]); } catch (_) { return; }
+    const p = state.pending;
+    if (p && p.tags.includes(m[1])) {
+      state.pending = null;
+      clearTimeout(p.timer);
+      p.resolve({ tag: m[1], data });
+    }
+  }
+
+  async function sendLine(text) {
+    const writer = state.port.writable.getWriter();
+    try {
+      // Small paced chunks: the chip's USB buffer is tiny.
+      const bytes = encoder.encode(text + '\n');
+      for (let i = 0; i < bytes.length; i += 32) {
+        await writer.write(bytes.slice(i, i + 32));
+        await sleep(6);
+      }
+    } finally {
+      writer.releaseLock();
+    }
+  }
+
+  async function request(text, tags, timeoutMs) {
+    if (!state.port) throw new Error('not-connected');
+    if (state.pending) throw new Error('busy');
+    const reply = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { state.pending = null; reject(new Error('timeout')); }, timeoutMs);
+      state.pending = { tags, resolve, timer };
+    });
+    reply.catch(() => {}); // a timeout after a failed send must not surface as unhandled
+    try {
+      await sendLine(text);
+    } catch (e) {
+      if (state.pending) { clearTimeout(state.pending.timer); state.pending = null; }
+      throw e;
+    }
+    return reply;
+  }
+
+  async function closePort() {
+    const port = state.port;
+    state.port = null;
+    state.connected = false;
+    if (state.pending) { clearTimeout(state.pending.timer); state.pending = null; }
+    try { if (state.reader) await state.reader.cancel(); } catch (_) { /* gone */ }
+    try { if (state.readDone) await state.readDone; } catch (_) { /* gone */ }
+    try { if (port) await port.close(); } catch (_) { /* gone */ }
+    state.reader = null; state.readDone = null;
+  }
+
+  // ------------------------------------------------------------ connection
+  async function connect(showAll) {
+    const msg = $('#msg-connect');
+    let port;
+    try {
+      port = showAll
+        ? await navigator.serial.requestPort()
+        : await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x303a }] }); // Espressif
+    } catch (e) {
+      if (e && e.name === 'NotFoundError') {
+        setMsg(msg, 'warn', 'Cihaz seçilmedi. Listede göremiyorsanız aşağıdaki “Cihaz listede görünmüyor” bölümüne bakın.');
+        $('#connect-help').open = true;
+      } else {
+        setMsg(msg, 'err', 'Bağlantı başlatılamadı: ' + (e && e.message ? e.message : e));
+      }
+      return;
+    }
+    setMsg(msg, 'info', 'Bağlanılıyor…');
+    try {
+      await openPort(port);
+    } catch (e) {
+      setMsg(msg, 'err', 'Port açılamadı. Arduino IDE, seri monitör ya da başka bir sekme cihazı kullanıyor olabilir; kapatıp tekrar deneyin.');
+      state.port = null;
+      return;
+    }
+    const hello = await handshake();
+    if (!hello) {
+      await closePort();
+      renderConnection();
+      setMsg(msg, 'err', 'Cihazdan yanıt gelmedi. Yazılım eski ya da bozuk olabilir: aşağıdaki 3. adımdan “Gelişmiş → Tam kurulum” yapın.');
+      $('#connect-help').open = false;
+      return;
+    }
+    state.device = hello;
+    state.connected = true;
+    state.expectingDrop = false;
+    setMsg(msg, '', '');
+    prefill(hello);
+    renderConnection();
+    renderVersion();
+  }
+
+  async function handshake() {
+    // Opening the port can restart the chip, so keep asking while it boots.
+    for (let i = 0; i < 12; i++) {
+      try {
+        const r = await request('PR:HELLO', ['HELLO'], 1200);
+        return r.data;
+      } catch (e) {
+        if (!state.port) return null;
+        await sleep(300);
+      }
+    }
+    return null;
+  }
+
+  async function disconnect() {
+    await closePort();
+    renderConnection();
+  }
+
+  function onPortLost() {
+    if (!state.port && !state.connected) return;
+    closePort().then(() => {
+      renderConnection();
+      if (state.expectingDrop) {
+        setMsg($('#msg-connect'), 'info', 'Cihaz yeniden başlıyor. Birkaç saniye sonra ekranında radar ya da saat görünmeli.');
+      } else {
+        setMsg($('#msg-connect'), 'warn', 'Cihazla bağlantı koptu. Kabloyu kontrol edip tekrar bağlanın.');
+      }
+    });
+  }
+
+  function renderConnection() {
+    const on = state.connected;
+    $('#btn-connect').hidden = on;
+    $('#btn-disconnect').hidden = !on;
+    $('#settings-fields').disabled = !on;
+    $('#btn-reset').disabled = !on;
+    $('#settings-hint').hidden = on;
+    const chips = $('#device-chips');
+    chips.hidden = !on;
+    chips.textContent = '';
+    if (on) {
+      const d = state.device;
+      const items = [
+        'Bağlı',
+        'Yazılım ' + d.fw,
+        d.wifi ? 'WiFi: ' + d.ssid + ' (' + d.ip + ')' : 'WiFi: bağlı değil',
+        'Kimlik ' + d.mac,
+      ];
+      for (const t of items) {
+        const s = document.createElement('span');
+        s.className = 'chip';
+        s.textContent = t;
+        chips.appendChild(s);
+      }
+    }
+    $('#wifi-keep').hidden = !(on && state.device && state.device.wifi);
+  }
+
+  // -------------------------------------------------------------- settings
+  async function loadZones() {
+    try {
+      const r = await fetch('tz.json');
+      state.zones = await r.json();
+    } catch (_) {
+      state.zones = { 'Europe/Istanbul': '<+03>-3', 'UTC': 'UTC0' };
+    }
+    const sel = $('#tz');
+    sel.textContent = '';
+    for (const name of Object.keys(state.zones).sort()) {
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = name.replace(/_/g, ' ');
+      sel.appendChild(o);
+    }
+    setZone(browserZone());
+  }
+
+  function browserZone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (_) { return 'UTC'; }
+  }
+
+  function setZone(name) {
+    const sel = $('#tz');
+    if (name && state.zones[name]) sel.value = name;
+    else if (state.zones['Europe/Istanbul']) sel.value = 'Europe/Istanbul';
+    showPosix();
+  }
+
+  function showPosix() {
+    const posix = state.zones[$('#tz').value] || '';
+    $('#tz-posix').textContent = posix ? 'Cihaza yazılacak değer: ' + posix : '';
+  }
+
+  function zoneForPosix(posix) {
+    const mine = browserZone();
+    if (state.zones[mine] === posix) return mine;
+    return Object.keys(state.zones).find((k) => state.zones[k] === posix) || mine;
+  }
+
+  function prefill(d) {
+    const isDefault = Math.abs(d.lat - DEFAULT_LAT) < 1e-4 && Math.abs(d.lon - DEFAULT_LON) < 1e-4;
+    if (!isDefault) {
+      $('#lat').value = Number(d.lat).toFixed(4);
+      $('#lon').value = Number(d.lon).toFixed(4);
+    }
+    setZone(zoneForPosix(d.tz));
+    $('#opt-clock').checked = !!d.clock;
+    $('#opt-miles').checked = !!d.miles;
+    $('#opt-runways').checked = !!d.runways;
+    $('#ssid').value = d.wifi ? d.ssid : '';
+    $('#pass').value = '';
+    updateMapLink();
+  }
+
+  function updateMapLink() {
+    const lat = parseFloat($('#lat').value), lon = parseFloat($('#lon').value);
+    const a = $('#map-link');
+    a.href = (isFinite(lat) && isFinite(lon))
+      ? 'https://www.openstreetmap.org/?mlat=' + lat + '&mlon=' + lon + '#map=11/' + lat + '/' + lon
+      : 'https://www.openstreetmap.org/';
+  }
+
+  async function scanNetworks() {
+    const msg = $('#msg-scan'), btn = $('#btn-scan');
+    btn.disabled = true;
+    setMsg(msg, 'info', 'Çevredeki ağlar taranıyor… (yaklaşık 5 saniye)');
+    try {
+      const r = await request('PR:SCAN', ['SCAN'], 15000);
+      const list = $('#nets');
+      list.textContent = '';
+      for (const n of (r.data.nets || [])) {
+        const o = document.createElement('option');
+        o.value = n.s;
+        o.label = n.s + (n.o ? ' (şifresiz)' : '');
+        list.appendChild(o);
+      }
+      const count = (r.data.nets || []).length;
+      setMsg(msg, count ? 'ok' : 'warn', count
+        ? count + ' ağ bulundu. Ağ adı kutusuna tıklayıp listeden seçebilirsiniz.'
+        : 'Hiç ağ bulunamadı. Cihaz yalnızca 2,4 GHz ağları görür; modemde 2,4 GHz’in açık olduğundan emin olun.');
+    } catch (e) {
+      setMsg(msg, 'err', 'Tarama başarısız oldu. Ağ adını elle yazabilirsiniz.');
+    }
+    btn.disabled = false;
+  }
+
+  async function searchCity() {
+    const q = $('#city').value.trim();
+    const msg = $('#msg-loc'), list = $('#results');
+    list.textContent = '';
+    if (q.length < 2) { setMsg(msg, 'warn', 'En az 2 harf yazın.'); return; }
+    setMsg(msg, 'info', 'Aranıyor…');
+    try {
+      const url = 'https://geocoding-api.open-meteo.com/v1/search?count=6&language=tr&format=json&name=' + encodeURIComponent(q);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('http ' + res.status);
+      const data = await res.json();
+      const found = data.results || [];
+      if (!found.length) { setMsg(msg, 'warn', 'Sonuç bulunamadı. Başka bir yazımı deneyin ya da enlem/boylamı elle girin.'); return; }
+      setMsg(msg, '', '');
+      for (const r of found) {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = [r.name, r.admin2, r.admin1, r.country].filter(Boolean).join(', ');
+        b.addEventListener('click', () => {
+          setLocation(r.latitude, r.longitude);
+          if (r.timezone) setZone(r.timezone);
+          list.textContent = '';
+          setMsg(msg, 'ok', 'Seçildi: ' + b.textContent);
+        });
+        li.appendChild(b);
+        list.appendChild(li);
+      }
+    } catch (e) {
+      setMsg(msg, 'err', 'Arama yapılamadı (internet bağlantınızı kontrol edin). Enlem ve boylamı elle de girebilirsiniz.');
+    }
+  }
+
+  function setLocation(lat, lon) {
+    $('#lat').value = Number(lat).toFixed(4);
+    $('#lon').value = Number(lon).toFixed(4);
+    updateMapLink();
+  }
+
+  function useMyLocation() {
+    const msg = $('#msg-loc');
+    if (!navigator.geolocation) { setMsg(msg, 'warn', 'Tarayıcı konum vermiyor. Şehir arayın ya da elle girin.'); return; }
+    setMsg(msg, 'info', 'Konum isteniyor… tarayıcının izin sorusunu onaylayın.');
+    navigator.geolocation.getCurrentPosition((pos) => {
+      setLocation(pos.coords.latitude, pos.coords.longitude);
+      setZone(browserZone());
+      setMsg(msg, 'ok', 'Konumunuz alındı. Doğru görünmüyorsa şehir arayarak değiştirin.');
+    }, () => {
+      setMsg(msg, 'warn', 'Konum alınamadı (izin verilmedi olabilir). Şehir arayın ya da elle girin.');
+    }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 });
+  }
+
+  const ERRORS = {
+    auth_failed: 'WiFi şifresi hatalı görünüyor. Şifreyi kontrol edip tekrar deneyin.',
+    ssid_not_found: 'Ağ bulunamadı. Adı kontrol edin; cihaz yalnızca 2,4 GHz ağları görür.',
+    timeout: 'WiFi’ye bağlanılamadı (zaman aşımı). Sinyal zayıf olabilir; cihazı modeme yaklaştırın.',
+    bad_location: 'Konum geçersiz. Enlem -90…90, boylam -180…180 arasında olmalı.',
+    bad_timezone: 'Saat dilimi geçersiz.',
+    bad_wifi: 'WiFi adı en fazla 32, şifre en fazla 63 karakter olabilir.',
+    bad_wifi_password: 'WiFi şifresi en az 8 karakter olmalı (şifresiz ağlarda boş bırakın).',
+    bad_json: 'Cihaz gönderilen veriyi anlamadı. Sayfayı yenileyip tekrar deneyin.',
+    unknown_command: 'Cihaz yazılımı bu komutu bilmiyor. 3. adımdan yazılımı güncelleyin.',
+  };
+
+  async function save(ev) {
+    ev.preventDefault();
+    const msg = $('#msg-save'), btn = $('#btn-save');
+    const lat = parseFloat($('#lat').value), lon = parseFloat($('#lon').value);
+    if (!isFinite(lat) || !isFinite(lon)) { setMsg(msg, 'err', 'Konumu seçin: şehir arayın, “Konumumu kullan”a basın ya da enlem/boylam girin.'); return; }
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) { setMsg(msg, 'err', ERRORS.bad_location); return; }
+
+    const ssid = $('#ssid').value;
+    const pass = $('#pass').value;
+    if (!ssid.trim() && !(state.device && state.device.wifi)) { setMsg(msg, 'err', 'WiFi ağ adını girin ya da “Ağları tara”dan seçin.'); return; }
+    if (ssid.trim() && pass && pass.length < 8) { setMsg(msg, 'err', ERRORS.bad_wifi_password); return; }
+
+    const payload = {
+      lat, lon,
+      tz: state.zones[$('#tz').value],
+      clock: $('#opt-clock').checked,
+      miles: $('#opt-miles').checked,
+      runways: $('#opt-runways').checked,
+    };
+    if (ssid.trim()) { payload.ssid = ssid; payload.pass = pass; }
+
+    btn.disabled = true;
+    setMsg(msg, 'info', payload.ssid ? 'Kaydediliyor ve WiFi’ye bağlanılıyor… (en fazla 20 saniye)' : 'Kaydediliyor…');
+    try {
+      if (payload.ssid) state.expectingDrop = true;
+      const r = await request('PR:SET ' + JSON.stringify(payload), ['OK', 'ERR'], 45000);
+      if (r.tag === 'ERR') {
+        state.expectingDrop = false;
+        setMsg(msg, 'err', ERRORS[r.data.msg] || ('Cihaz hata verdi: ' + r.data.msg));
+      } else if (r.data.reboot) {
+        setMsg(msg, 'ok', 'Kaydedildi. Cihaz WiFi’ye bağlandı (' + (r.data.ip || '') + ') ve yeniden başlıyor. Birkaç saniye içinde radar açılır; bu sayfayı kapatabilirsiniz.');
+      } else {
+        state.expectingDrop = false;
+        setMsg(msg, 'ok', 'Ayarlar cihaza kaydedildi.');
+      }
+    } catch (e) {
+      state.expectingDrop = false;
+      setMsg(msg, 'err', 'Cihazdan yanıt gelmedi. Bağlantıyı kesip tekrar bağlanmayı deneyin.');
+    }
+    btn.disabled = false;
+  }
+
+  // ---------------------------------------------------------------- update
+  async function loadLatest() {
+    try {
+      const r = await fetch('version.json', { cache: 'no-store' });
+      state.latest = (await r.json()).version || null;
+    } catch (_) { state.latest = null; }
+    renderVersion();
+  }
+
+  function renderVersion() {
+    const el = $('#msg-version');
+    const cur = state.connected && state.device ? state.device.fw : null;
+    if (!state.latest) { setMsg(el, '', ''); return; }
+    if (!cur) { setMsg(el, 'info', 'En yeni yazılım sürümü: ' + state.latest + '. Cihaza bağlanırsanız sürümünü de gösteririm.'); return; }
+    if (cur === state.latest) setMsg(el, 'ok', 'Cihazınız güncel (sürüm ' + cur + ').');
+    else setMsg(el, 'warn', 'Cihazdaki sürüm ' + cur + ', en yeni sürüm ' + state.latest + '. Aşağıdan güncelleyebilirsiniz.');
+  }
+
+  async function resetDevice() {
+    if (!confirm('Cihazdaki WiFi, konum ve birim ayarları silinecek ve cihaz yeniden başlayacak. Devam edilsin mi?')) return;
+    try {
+      state.expectingDrop = true;
+      await request('PR:RESET', ['OK'], 8000);
+      setMsg($('#msg-save'), 'ok', 'Ayarlar sıfırlandı, cihaz yeniden başlıyor.');
+    } catch (_) {
+      state.expectingDrop = false;
+      setMsg($('#msg-save'), 'err', 'Cihazdan yanıt gelmedi.');
+    }
+  }
+
+  // ------------------------------------------------------------------ init
+  function init() {
+    if (!('serial' in navigator)) {
+      $('#unsupported').hidden = false;
+      $('#btn-connect').disabled = true;
+    } else {
+      navigator.serial.addEventListener('disconnect', (ev) => { if (ev.target === state.port) onPortLost(); });
+    }
+    $('#btn-connect').addEventListener('click', () => connect(false));
+    $('#btn-connect-all').addEventListener('click', () => connect(true));
+    $('#btn-disconnect').addEventListener('click', disconnect);
+    $('#btn-scan').addEventListener('click', scanNetworks);
+    $('#btn-search').addEventListener('click', searchCity);
+    $('#city').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); searchCity(); } });
+    $('#btn-geo').addEventListener('click', useMyLocation);
+    $('#btn-reset').addEventListener('click', resetDevice);
+    $('#settings').addEventListener('submit', save);
+    $('#tz').addEventListener('change', showPosix);
+    $('#lat').addEventListener('input', updateMapLink);
+    $('#lon').addEventListener('input', updateMapLink);
+    $('#btn-showpass').addEventListener('click', (e) => {
+      const p = $('#pass');
+      const show = p.type === 'password';
+      p.type = show ? 'text' : 'password';
+      e.currentTarget.textContent = show ? 'Gizle' : 'Göster';
+      e.currentTarget.setAttribute('aria-pressed', String(show));
+    });
+    // The update tool needs the USB port to itself.
+    for (const id of ['#install-update', '#install-full']) {
+      $(id).addEventListener('click', () => { if (state.port) { state.expectingDrop = false; disconnect(); } }, true);
+    }
+    renderConnection();
+    loadZones();
+    loadLatest();
+    // The update buttons come from a script on a CDN; say so if it did not load.
+    window.addEventListener('load', () => setTimeout(() => {
+      if (!customElements.get('esp-web-install-button')) {
+        const el = document.createElement('div');
+        el.className = 'msg warn';
+        el.textContent = 'Güncelleme bileşeni yüklenemedi. İnternet bağlantınızı kontrol edin ya da reklam/güvenlik engelleyicisini bu sayfa için kapatıp sayfayı yenileyin.';
+        $('#install-update').after(el);
+      }
+    }, 3000));
+  }
+  init();
+})();
+</script>
+</body>
+</html>

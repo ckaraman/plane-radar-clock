@@ -53,6 +53,22 @@ When no aircraft have been in range for `kClockIdleDelayMs` (15 s), the radar is
 
 After a reset, the device reboots and shows the setup screen immediately (no “Connecting” loop on stale credentials).
 
+## Setup and update page (USB, from a computer)
+
+`web/` is a small static site (published to GitHub Pages by `.github/workflows/build.yml`) that lets an end user set up a device that was flashed in advance:
+
+1. Plug the device into a computer, open the page in **Chrome or Edge** and press *Cihaza bağlan* (connect).
+2. Pick the Wi-Fi network (scan list), enter the password, choose the location (city search, "use my location" or lat/lon) and time zone, press *Cihaza kaydet*.
+3. The device tests the Wi-Fi, stores everything and restarts. A wrong password is reported on the page and the previous Wi-Fi is kept.
+
+The page talks to the firmware over the USB serial port with a line protocol (`PR:HELLO`, `PR:SCAN`, `PR:SET {json}`, `PR:RESET`; see `include/services/serial_setup.h`). Ordinary log lines are ignored, so Serial Monitor still works.
+
+**Updating:** the same page has an *update* button (ESP Web Tools). It writes only the application at `0x10000`, so Wi-Fi/location/time zone stay on the device. *Full install* (under "Gelişmiş") writes the merged image at `0x0` and **erases the settings**; use it for blank devices or if a release changes the partition table (`partitions/`).
+
+To publish: in the repository, **Settings → Pages → Source: GitHub Actions**. Every push to `main` builds the firmware and redeploys the site. Bump `kFirmwareVersion` in `config.h` for each release, the page compares it with the version on the device.
+
+To flash devices before shipping, write `firmware-merged.bin` at `0x0` (the *Full install* button does this, or `esptool`). A device without saved Wi-Fi shows the yellow setup screen and can still be set up through the old Wi-Fi portal (`PlaneRadar-Setup`, no password).
+
 ## Radar display
 
 ### Grid
