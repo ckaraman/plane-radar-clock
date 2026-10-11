@@ -111,6 +111,12 @@
         • <button type="button" class="btn" id="btn-connect-all">Tüm USB cihazlarını listele</button>
       </p>
     </details>
+    <details id="diag">
+      <summary>Tanılama kaydı (bağlanamıyorsanız açın)</summary>
+      <p class="small">Cihazdan gelen ham yazılar burada görünür. Sorun sürerse bu metni kopyalayıp gönderin.</p>
+      <pre id="diag-log" style="max-height:220px;overflow:auto;white-space:pre-wrap;font-size:12px;margin:0 0 8px"></pre>
+      <button type="button" class="btn" id="btn-copylog">Kaydı kopyala</button>
+    </details>
   </section>
 
   <form class="card" id="settings" aria-labelledby="h-settings" novalidate>
@@ -260,7 +266,18 @@
     })();
   }
 
+  const diag = { lines: [], boots: 0 };
+  function note(text) {
+    const t = new Date().toLocaleTimeString('tr-TR');
+    diag.lines.push(t + '  ' + text);
+    if (diag.lines.length > 300) diag.lines.shift();
+    const el = $('#diag-log');
+    if (el) { el.textContent = diag.lines.join('\n'); el.scrollTop = el.scrollHeight; }
+  }
+
   function onLine(line) {
+    if (line.length) note(line.length > 300 ? line.slice(0, 300) + '…' : line);
+    if (/Plane Radar v\d/.test(line)) diag.boots++;
     const at = line.indexOf('PR:');
     if (at < 0) return; // ordinary firmware log text
     const m = /^PR:([A-Z]+)\s*(.*)$/.exec(line.slice(at));
@@ -335,19 +352,41 @@
       return;
     }
     setMsg(msg, 'info', 'Bağlanılıyor…');
-    try {
-      await openPort(port);
-    } catch (e) {
-      setMsg(msg, 'err', 'Port açılamadı. Arduino IDE, seri monitör ya da başka bir sekme cihazı kullanıyor olabilir; kapatıp tekrar deneyin.');
-      state.port = null;
-      return;
+    diag.boots = 0;
+    note('Bağlantı denemesi başladı');
+    let hello = null;
+    // The chip can restart (and the USB port vanish and come back) while we open it,
+    // so on a lost port wait for it to return and try again instead of giving up.
+    for (let attempt = 0; attempt < 4 && !hello; attempt++) {
+      if (attempt > 0) {
+        setMsg(msg, 'info', 'Cihaz yeniden görünüyor, tekrar deneniyor… (' + attempt + '/3)');
+        port = await waitForPort(port);
+        if (!port) break;
+      }
+      try {
+        await openPort(port);
+      } catch (e) {
+        note('Port açılamadı: ' + (e && e.message ? e.message : e));
+        if (attempt === 0) {
+          setMsg(msg, 'err', 'Port açılamadı. Arduino IDE, seri monitör ya da başka bir sekme cihazı kullanıyor olabilir; kapatıp tekrar deneyin.');
+          state.port = null;
+          return;
+        }
+        continue;
+      }
+      hello = await handshake();
+      if (!hello) { await closePort(); }
     }
-    const hello = await handshake();
     if (!hello) {
-      await closePort();
       renderConnection();
-      setMsg(msg, 'err', 'Cihazdan yanıt gelmedi. Yazılım eski ya da bozuk olabilir: aşağıdaki 3. adımdan “Gelişmiş → Tam kurulum” yapın.');
-      $('#connect-help').open = false;
+      if (diag.boots >= 2) {
+        setMsg(msg, 'err', 'Cihaz sürekli yeniden başlıyor (' + diag.boots + ' kez). Yazılım çöküyor olabilir; aşağıdaki “Tanılama kaydı” bölümünü açıp içeriğini paylaşın.');
+      } else if (diag.lines.length > 1) {
+        setMsg(msg, 'err', 'Cihaz yazı gönderiyor ama sorumuza yanıt vermiyor (eski yazılım olabilir). “Tanılama kaydı” bölümüne bakın; gerekirse 3. adımdan Tam kurulum yapın.');
+      } else {
+        setMsg(msg, 'err', 'Cihazdan hiç veri gelmedi. Veri kablosu ve başka USB portu deneyin; BOOT basılı tutarak takıp bırakın, sonra tekrar deneyin. “Tanılama kaydı” bölümüne bakın.');
+      }
+      $('#diag').open = true;
       return;
     }
     state.device = hello;
@@ -357,6 +396,21 @@
     prefill(hello);
     renderConnection();
     renderVersion();
+  }
+
+  async function waitForPort(prev) {
+    for (let i = 0; i < 12; i++) {
+      await sleep(500);
+      try {
+        const ports = await navigator.serial.getPorts();
+        const same = ports.find((p) => p === prev);
+        const esp = ports.filter((p) => { const i2 = p.getInfo(); return i2.usbVendorId === 0x303a; });
+        const pick = same || esp[0];
+        if (pick) { await sleep(800); return pick; }
+      } catch (_) { /* retry */ }
+    }
+    note('Cihaz yeniden görünmedi');
+    return null;
   }
 
   async function handshake() {
@@ -379,6 +433,7 @@
   }
 
   function onPortLost() {
+    note('USB bağlantısı koptu');
     if (!state.port && !state.connected) return;
     closePort().then(() => {
       renderConnection();
@@ -653,6 +708,10 @@
     $('#btn-connect').addEventListener('click', () => connect(false));
     $('#btn-connect-all').addEventListener('click', () => connect(true));
     $('#btn-disconnect').addEventListener('click', disconnect);
+    $('#btn-copylog').addEventListener('click', async (e) => {
+      try { await navigator.clipboard.writeText(diag.lines.join('\n')); e.currentTarget.textContent = 'Kopyalandı'; }
+      catch (_) { $('#diag-log').focus(); e.currentTarget.textContent = 'Metni elle seçip kopyalayın'; }
+    });
     $('#btn-scan').addEventListener('click', scanNetworks);
     $('#btn-search').addEventListener('click', searchCity);
     $('#city').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); searchCity(); } });
