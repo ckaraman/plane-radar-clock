@@ -237,8 +237,7 @@
   // ---------------------------------------------------------------- serial
   async function openPort(port) {
     await port.open({ baudRate: 115200, bufferSize: 16384 });
-    // Plain open must not reset the chip into its boot loader.
-    try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch (_) { /* optional */ }
+    // Do not touch DTR/RTS: on this chip they can reset it, and a plain open works like a serial terminal.
     state.port = port;
     startReading(port);
   }
@@ -295,11 +294,11 @@
   async function sendLine(text) {
     const writer = state.port.writable.getWriter();
     try {
-      // Small paced chunks: the chip's USB buffer is tiny.
-      const bytes = encoder.encode(text + '\n');
-      for (let i = 0; i < bytes.length; i += 32) {
-        await writer.write(bytes.slice(i, i + 32));
-        await sleep(6);
+      // Leading newline ends any half-received junk line on the device side.
+      const bytes = encoder.encode('\n' + text + '\n');
+      for (let i = 0; i < bytes.length; i += 64) {
+        await writer.write(bytes.slice(i, i + 64));
+        if (i + 64 < bytes.length) await sleep(8);
       }
     } finally {
       writer.releaseLock();
@@ -375,7 +374,11 @@
         continue;
       }
       hello = await handshake();
-      if (!hello) { await closePort(); }
+      if (!hello) {
+        const lost = !state.port;
+        await closePort();
+        if (!lost) break; // port is fine but the device does not answer: reopening would only reset it again
+      }
     }
     if (!hello) {
       renderConnection();
@@ -415,9 +418,9 @@
 
   async function handshake() {
     // Opening the port can restart the chip, so keep asking while it boots.
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 16; i++) {
       try {
-        const r = await request('PR:HELLO', ['HELLO'], 1200);
+        const r = await request('PR:HELLO', ['HELLO'], 1500);
         return r.data;
       } catch (e) {
         if (!state.port) return null;
