@@ -188,11 +188,11 @@
         <span slot="not-allowed" class="msg warn">Güncelleme için bu sayfa https:// adresinden açılmalı.</span>
       </esp-web-install-button>
     </div>
-    <p class="small">Güncelleme sırasında bir USB cihaz listesi açılır; cihazı seçin. Bittiğinde 1. adımdan yeniden bağlanabilirsiniz.</p>
+    <p class="small">Güncelleme sırasında bir USB cihaz listesi açılır; cihazı seçin. Açılan pencerede <strong>“Erase device / Cihazı sil” kutusunu işaretlemeyin</strong> (işaretlerseniz WiFi ve konum ayarları silinir). “Install” düğmesine basıp %100 olmasını bekleyin; bitince 1. adımdan yeniden bağlanabilirsiniz.</p>
 
     <details>
       <summary>Gelişmiş</summary>
-      <p class="small">Cihaz hiç yanıt vermiyorsa tam kurulum yapın. <strong>Bu işlem tüm ayarları siler</strong>; sonra 2. adımdan yeniden girmeniz gerekir.</p>
+      <p class="small">Cihaz hiç yanıt vermiyorsa ya da boşsa tam kurulum yapın. <strong>Bu işlem tüm ayarları siler</strong>; sonra 2. adımdan yeniden girmeniz gerekir. Cihaz görünmüyorsa BOOT düğmesine basılı tutarak USB'yi takın, sonra bırakın.</p>
       <div class="row">
         <esp-web-install-button id="install-full" manifest="manifest-full.json">
           <button slot="activate" class="btn" type="button">Tam kurulum (ayarlar silinir)</button>
