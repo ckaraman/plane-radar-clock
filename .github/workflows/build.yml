@@ -41,6 +41,13 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
+      - name: Write setup page address (shown on the device screen)
+        run: |
+          OWNER=$(echo "${GITHUB_REPOSITORY%%/*}" | tr 'A-Z' 'a-z')
+          REPO="${GITHUB_REPOSITORY#*/}"
+          printf '#pragma once\n#define SETUP_PAGE_URL "%s.github.io/%s"\n' "$OWNER" "$REPO" > include/setup_url.h
+          cat include/setup_url.h
+
       - name: Build
         run: pio run -e supermini
 
