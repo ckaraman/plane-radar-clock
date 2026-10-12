@@ -9,6 +9,7 @@
 #include "hardware/display.h"
 #include "services/adsb_client.h"
 #include "services/clock_service.h"
+#include "services/map_store.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
 #include "ui/clock_display.h"
@@ -130,6 +131,7 @@ void setup() {
     statusScreenPortal();
   }
   services::location::init();
+  services::map::init();
   services::clock::init();  // before WiFi setup: the portal prefills from it
   ui::radar::rangeInit();
   services::adsb::init();

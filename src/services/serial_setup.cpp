@@ -8,10 +8,12 @@
 #include <esp_wifi.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "config.h"
 #include "services/clock_service.h"
+#include "services/map_store.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_range.h"
@@ -20,7 +22,7 @@ namespace services::serial_setup {
 
 namespace {
 
-constexpr size_t kMaxLine = 600;
+constexpr size_t kMaxLine = 700;
 constexpr size_t kMaxReply = 2048;
 constexpr size_t kTzMaxLen = 47;
 constexpr unsigned long kJoinTimeoutMs = 20000;
@@ -90,6 +92,7 @@ void sendHello() {
   doc["clock"] = services::clock::enabled();
   doc["miles"] = ui::radar::useMiles();
   doc["runways"] = ui::radar::showRunways();
+  doc["map"] = static_cast<uint32_t>(services::map::size());
   sendReply("HELLO", doc);
 }
 
@@ -290,6 +293,92 @@ void handleSet(const char* json) {
   esp_restart();  // clean start on the saved network
 }
 
+int b64Value(char c) {
+  if (c >= 'A' && c <= 'Z') return c - 'A';
+  if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+  if (c >= '0' && c <= '9') return c - '0' + 52;
+  if (c == '+') return 62;
+  if (c == '/') return 63;
+  return -1;
+}
+
+// Decodes standard base64 (with or without '=' padding) into out; -1 on bad input.
+int b64Decode(const char* in, uint8_t* out, size_t out_cap) {
+  size_t n = 0;
+  uint32_t acc = 0;
+  int bits = 0;
+  for (; *in != '\0' && *in != '='; ++in) {
+    const int v = b64Value(*in);
+    if (v < 0) {
+      return -1;
+    }
+    acc = (acc << 6) | static_cast<uint32_t>(v);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      if (n >= out_cap) {
+        return -1;
+      }
+      out[n++] = static_cast<uint8_t>((acc >> bits) & 0xFF);
+    }
+  }
+  return static_cast<int>(n);
+}
+
+// PR:MAPBEGIN {"len":n,"crc":c}   PR:MAP <seq> <base64>   PR:MAPEND   PR:MAPCLEAR
+// Every chunk is acknowledged (PR:MAPACK) so the page never outruns the chip.
+void handleMapBegin(const char* json) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json) != DeserializationError::Ok ||
+      !doc["len"].is<uint32_t>() || !doc["crc"].is<uint32_t>()) {
+    sendError("bad_json");
+    return;
+  }
+  if (!services::map::beginStaging(doc["len"].as<uint32_t>(),
+                                   doc["crc"].as<uint32_t>())) {
+    sendError("map_too_big");
+    return;
+  }
+  JsonDocument ack;
+  ack["seq"] = 0;
+  sendReply("MAPACK", ack);
+}
+
+void handleMapChunk(char* args) {
+  char* data = strchr(args, ' ');
+  if (data == nullptr) {
+    sendError("bad_map_chunk");
+    return;
+  }
+  *data++ = '\0';
+  const long seq = atol(args);
+  uint8_t bytes[480];
+  const int n = b64Decode(data, bytes, sizeof(bytes));
+  if (n <= 0 || !services::map::stageChunk(bytes, static_cast<size_t>(n))) {
+    services::map::abortStaging();
+    sendError("bad_map_chunk");
+    return;
+  }
+  JsonDocument ack;
+  ack["seq"] = seq;
+  sendReply("MAPACK", ack);
+}
+
+void handleMapEnd() {
+  if (!services::map::commit()) {
+    sendError("bad_map");
+    return;
+  }
+  JsonDocument doc;
+  doc["map"] = static_cast<uint32_t>(services::map::size());
+  sendReply("OK", doc);
+}
+
+void handleMapClear() {
+  services::map::clear();
+  sendOk(false);
+}
+
 void handleReset() {
   sendOk(true);
   Serial.flush();
@@ -315,6 +404,14 @@ void handleLine(char* line) {
     sendScan();
   } else if (strcmp(command, "SET") == 0) {
     handleSet(args);
+  } else if (strcmp(command, "MAPBEGIN") == 0) {
+    handleMapBegin(args);
+  } else if (strcmp(command, "MAP") == 0) {
+    handleMapChunk(args);
+  } else if (strcmp(command, "MAPEND") == 0) {
+    handleMapEnd();
+  } else if (strcmp(command, "MAPCLEAR") == 0) {
+    handleMapClear();
   } else if (strcmp(command, "RESET") == 0) {
     handleReset();
   } else {

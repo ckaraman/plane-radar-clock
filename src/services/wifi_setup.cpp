@@ -17,6 +17,7 @@
 #include "config.h"
 #include "services/clock_service.h"
 #include "services/radar_location.h"
+#include "services/map_store.h"
 #include "services/serial_setup.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
@@ -230,6 +231,7 @@ void resetWifiCredentials() {
   eraseWifiCredentials();
   services::location::clear();
   services::clock::clear();
+  services::map::clear();
   ui::radar::unitsReset();
   Serial.println("WiFi credentials, location, and units cleared");
 }

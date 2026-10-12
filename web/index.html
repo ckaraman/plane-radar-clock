@@ -168,7 +168,9 @@
         <label><input type="checkbox" id="opt-clock" checked> Gökyüzünde uçak yokken saati göster</label>
         <label><input type="checkbox" id="opt-miles"> Mesafeleri mil olarak göster</label>
         <label><input type="checkbox" id="opt-runways" checked> Havalimanı pistlerini göster</label>
+        <label><input type="checkbox" id="opt-map" checked> Radarın arkasına harita çiz (kıyı çizgisi ve ana yollar)</label>
       </div>
+      <small id="map-note">Harita, seçtiğiniz konumun yaklaşık 36 km çevresi için internetten indirilip cihaza yazılır; konumu değiştirdiğinizde yeniden indirilir.</small>
 
       <div class="row" style="margin-top:18px">
         <button type="submit" class="btn primary" id="btn-save">Cihaza kaydet</button>
@@ -208,6 +210,8 @@
   <footer>
     Şehir araması <a href="https://open-meteo.com/en/docs/geocoding-api" target="_blank" rel="noopener">Open-Meteo</a> servisini kullanır;
     girdiğiniz yer adı oraya gönderilir, başka hiçbir bilgi paylaşılmaz. WiFi şifresi yalnızca USB üzerinden cihaza yazılır.
+    Harita çizgileri © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap katkıda bulunanları</a> (ODbL);
+    Overpass servisinden indirilir, yalnızca seçtiğiniz konumun koordinatları gönderilir.
     Saat dilimi tablosu: <a href="https://github.com/nayarsystems/posix_tz_db" target="_blank" rel="noopener">posix_tz_db</a> (MIT).
   </footer>
 </main>
@@ -466,6 +470,7 @@
         d.wifi ? 'WiFi: ' + d.ssid + ' (' + d.ip + ')' : 'WiFi: bağlı değil',
         'Kimlik ' + d.mac,
       ];
+      if (d.map > 0) items.push('Harita: ' + Math.round(d.map / 1024) + ' KB');
       for (const t of items) {
         const s = document.createElement('span');
         s.className = 'chip';
@@ -527,6 +532,8 @@
     $('#opt-clock').checked = !!d.clock;
     $('#opt-miles').checked = !!d.miles;
     $('#opt-runways').checked = !!d.runways;
+    $('#opt-map').disabled = d.map === undefined;      // old firmware: no map support
+    if (d.map === undefined) $('#opt-map').checked = false;
     $('#ssid').value = d.wifi ? d.ssid : '';
     $('#pass').value = '';
     updateMapLink();
@@ -626,7 +633,161 @@
     bad_wifi_password: 'WiFi şifresi en az 8 karakter olmalı (şifresiz ağlarda boş bırakın).',
     bad_json: 'Cihaz gönderilen veriyi anlamadı. Sayfayı yenileyip tekrar deneyin.',
     unknown_command: 'Cihaz yazılımı bu komutu bilmiyor. 3. adımdan yazılımı güncelleyin.',
+    map_too_big: 'Harita cihaz hafızasına sığmadı.',
+    bad_map: 'Harita cihazda doğrulanamadı (veri bozuk geldi).',
+    bad_map_chunk: 'Harita verisi cihaza bozuk ulaştı.',
   };
+
+
+  // ------------------------------------------------------------------ map
+  // Coast lines and main roads around the chosen location, from OpenStreetMap.
+  // Binary format and limits: include/services/map_store.h in the firmware.
+  const MAP_RADIUS_KM = 36, MAP_MAX_POINTS = 3500, MAP_MAX_BYTES = 23500, KM_PER_DEG = 111;
+  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+
+  function crc32(bytes) {
+    let table = crc32.table;
+    if (!table) {
+      table = crc32.table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); table[n] = c >>> 0; }
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  async function fetchOverpass(lat, lon) {
+    const dLat = MAP_RADIUS_KM / KM_PER_DEG, dLon = MAP_RADIUS_KM / (KM_PER_DEG * Math.cos(lat * Math.PI / 180));
+    const bbox = [lat - dLat, lon - dLon, lat + dLat, lon + dLon].map((v) => v.toFixed(5)).join(',');
+    const q = '[out:json][timeout:40];(way["natural"="coastline"](' + bbox + ');' +
+      'way["highway"~"^(motorway|trunk|primary)$"](' + bbox + '););out geom(' + bbox + ');';
+    let lastErr = null;
+    for (const url of OVERPASS) {
+      try {
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), 45000);
+        const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
+                                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        clearTimeout(t);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        if (!j || !Array.isArray(j.elements)) throw new Error('bad response');
+        return j.elements;
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error('network');
+  }
+
+  function simplify(pts, tol) {          // Douglas-Peucker, iterative
+    const n = pts.length;
+    if (n < 3) return pts;
+    const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1;
+    const stack = [[0, n - 1]];
+    while (stack.length) {
+      const [a, b] = stack.pop();
+      const [ax, ay] = pts[a], [bx, by] = pts[b];
+      const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+      let maxd = 0, idx = -1;
+      for (let i = a + 1; i < b; i++) {
+        const [px, py] = pts[i];
+        let d;
+        if (len2 === 0) d = Math.hypot(px - ax, py - ay);
+        else { const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)); d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy)); }
+        if (d > maxd) { maxd = d; idx = i; }
+      }
+      if (maxd > tol && idx > 0) { keep[idx] = 1; stack.push([a, idx], [idx, b]); }
+    }
+    return pts.filter((_, i) => keep[i]);
+  }
+
+  function buildMapBlob(elements, lat, lon) {
+    const cosL = Math.cos(lat * Math.PI / 180);
+    const runs = [];                     // {type, pts:[[x_km,y_km],...]}
+    for (const el of elements) {
+      if (el.type !== 'way' || !Array.isArray(el.geometry)) continue;
+      const type = el.tags && el.tags.natural === 'coastline' ? 0 : 1;
+      let cur = [];
+      const flush = () => { if (cur.length >= 2) runs.push({ type, pts: cur }); cur = []; };
+      for (const g of el.geometry) {
+        if (!g) { flush(); continue; }   // point outside the requested box
+        const x = (g.lon - lon) * KM_PER_DEG * cosL, y = (g.lat - lat) * KM_PER_DEG;
+        if (Math.hypot(x, y) > MAP_RADIUS_KM) { flush(); continue; }
+        cur.push([x, y]);
+      }
+      flush();
+    }
+    let tol = 0.03, built = null;
+    for (let iter = 0; iter < 14; iter++) {
+      const lines = [];
+      let points = 0;
+      for (const r of runs) {
+        const s = simplify(r.pts, tol);
+        if (s.length < 2) continue;
+        let len = 0;
+        for (let i = 1; i < s.length; i++) len += Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1]);
+        if (len < (r.type === 0 ? 0.15 : 0.4)) continue;      // tiny fragments are only noise at this size
+        lines.push({ type: r.type, pts: s }); points += s.length;
+      }
+      const bytes = 14 + lines.length * 3 + points * 4;
+      if (points <= MAP_MAX_POINTS && bytes <= MAP_MAX_BYTES && lines.length < 65535) { built = { lines, points, bytes }; break; }
+      tol *= 1.4;
+    }
+    if (!built) throw new Error('too-big');
+    if (!built.lines.length) return null;                     // nothing to draw here
+    const buf = new ArrayBuffer(built.bytes), dv = new DataView(buf);
+    dv.setUint8(0, 0x50); dv.setUint8(1, 0x4D); dv.setUint8(2, 1); dv.setUint8(3, 0);
+    dv.setInt32(4, Math.round(lat * 1e7), true); dv.setInt32(8, Math.round(lon * 1e7), true);
+    dv.setUint16(12, built.lines.length, true);
+    let o = 14;
+    const q = (v) => Math.max(-32767, Math.min(32767, Math.round(v * 100)));   // 10 m units
+    for (const l of built.lines) {
+      dv.setUint8(o, l.type); dv.setUint16(o + 1, l.pts.length, true); o += 3;
+      for (const [x, y] of l.pts) { dv.setInt16(o, q(x), true); dv.setInt16(o + 2, q(y), true); o += 4; }
+    }
+    return new Uint8Array(buf);
+  }
+
+  async function uploadMap(blob, onProgress) {
+    const ack = async (cmd, timeout) => {
+      const r = await request(cmd, ['MAPACK', 'ERR'], timeout);
+      if (r.tag === 'ERR') throw new Error(r.data.msg || 'map-error');
+      return r;
+    };
+    await ack('PR:MAPBEGIN ' + JSON.stringify({ len: blob.length, crc: crc32(blob) }), 5000);
+    const CH = 270;
+    for (let off = 0, seq = 1; off < blob.length; off += CH, seq++) {
+      const part = blob.subarray(off, Math.min(off + CH, blob.length));
+      let bin = ''; for (let i = 0; i < part.length; i++) bin += String.fromCharCode(part[i]);
+      const r = await ack('PR:MAP ' + seq + ' ' + btoa(bin), 5000);
+      if (r.data.seq !== seq) throw new Error('map-seq');
+      if (onProgress) onProgress(Math.min(100, Math.round(((off + part.length) / blob.length) * 100)));
+    }
+    const done = await request('PR:MAPEND', ['OK', 'ERR'], 10000);
+    if (done.tag === 'ERR') throw new Error(done.data.msg || 'map-error');
+  }
+
+  // Returns a short note for the save message ('' when the map step was skipped).
+  async function syncMap(lat, lon, msg) {
+    const want = $('#opt-map').checked;
+    const dev = state.device || {};
+    if (dev.map === undefined) return want ? ' Harita için önce 3. adımdan yazılımı güncelleyin.' : '';
+    if (!want) {
+      if (dev.map > 0) { try { await request('PR:MAPCLEAR', ['OK', 'ERR'], 5000); dev.map = 0; } catch (_) { /* optional */ } }
+      return '';
+    }
+    try {
+      setMsg(msg, 'info', 'Harita indiriliyor… (birkaç saniye sürebilir)');
+      const elements = await fetchOverpass(lat, lon);
+      const blob = buildMapBlob(elements, lat, lon);
+      if (!blob) return ' Bu konumda çizilecek kıyı ya da ana yol bulunamadı, harita eklenmedi.';
+      await uploadMap(blob, (p) => setMsg(msg, 'info', 'Harita cihaza yazılıyor… %' + p));
+      dev.map = blob.length;
+      return ' Harita da yüklendi (' + Math.round(blob.length / 1024) + ' KB).';
+    } catch (e) {
+      const m = e && e.message ? e.message : '';
+      return ' Harita eklenemedi (' + (ERRORS[m] || (m === 'too-big' ? 'çok ayrıntılı' : 'internetten indirilemedi')) + '); diğer ayarlar kaydedildi. Daha sonra tekrar deneyebilirsiniz.';
+    }
+  }
 
   async function save(ev) {
     ev.preventDefault();
@@ -650,6 +811,8 @@
     if (ssid.trim()) { payload.ssid = ssid; payload.pass = pass; }
 
     btn.disabled = true;
+    let mapNote = '';
+    try { mapNote = await syncMap(lat, lon, msg); } catch (_) { mapNote = ' Harita eklenemedi.'; }
     setMsg(msg, 'info', payload.ssid ? 'Kaydediliyor ve WiFi’ye bağlanılıyor… (en fazla 20 saniye)' : 'Kaydediliyor…');
     try {
       if (payload.ssid) state.expectingDrop = true;
@@ -658,10 +821,10 @@
         state.expectingDrop = false;
         setMsg(msg, 'err', ERRORS[r.data.msg] || ('Cihaz hata verdi: ' + r.data.msg));
       } else if (r.data.reboot) {
-        setMsg(msg, 'ok', 'Kaydedildi. Cihaz WiFi’ye bağlandı (' + (r.data.ip || '') + ') ve yeniden başlıyor. Birkaç saniye içinde radar açılır; bu sayfayı kapatabilirsiniz.');
+        setMsg(msg, 'ok', 'Kaydedildi. Cihaz WiFi’ye bağlandı (' + (r.data.ip || '') + ') ve yeniden başlıyor. Birkaç saniye içinde radar açılır; bu sayfayı kapatabilirsiniz.' + mapNote);
       } else {
         state.expectingDrop = false;
-        setMsg(msg, 'ok', 'Ayarlar cihaza kaydedildi.');
+        setMsg(msg, 'ok', 'Ayarlar cihaza kaydedildi.' + mapNote);
       }
     } catch (e) {
       state.expectingDrop = false;
