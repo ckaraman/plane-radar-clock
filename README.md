@@ -1,8 +1,8 @@
 # Plane Radar
 
-<img width="800" height="450" alt="plane-radar" src="https://github.com/user-attachments/assets/716d0992-dab8-47ba-8f1a-2aec7f607419" />
+**Case:** my own design (photos and model files will be added here).
 
-**3D printed case (STL + assembly):** [MakerWorld](https://makerworld.com/en/models/2872376-esp32-plane-radar-live-ads-b-on-a-round-display#profileId-3207083) · **Firmware:** [Releases](https://github.com/MatixYo/ESP32-Plane-Radar/releases)
+**Install / setup page:** [ckaraman.github.io/plane-radar-clock](https://ckaraman.github.io/plane-radar-clock) · **Firmware:** [Releases](https://github.com/ckaraman/plane-radar-clock/releases)
 
 Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (240×240). Shows a circular **ADS-B radar** around your configured location, with **WiFiManager** for first-time setup.
 
@@ -240,3 +240,11 @@ The release workflow builds firmware in CI and attaches the merged image to the 
 - [LovyanGFX](https://github.com/lovyan03/LovyanGFX)
 - [WiFiManager](https://github.com/tzapu/WiFiManager)
 - [ArduinoJson](https://github.com/bblanchon/ArduinoJson)
+
+## Credits and licenses
+
+- This firmware started from [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) (MIT, © 2026 MatixYo). The MIT license text and that copyright line are kept in [LICENSE](LICENSE); the clock, USB setup page, map layer and the other additions are by ckaraman, under the same MIT license.
+- Aircraft data: [adsb.fi open data](https://opendata.adsb.fi/) (check its terms of use before any commercial use).
+- Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL), fetched through the Overpass API by the setup page.
+- Time zone table: [posix_tz_db](https://github.com/nayarsystems/posix_tz_db) (MIT).
+- Libraries: LovyanGFX, WiFiManager, ArduinoJson (see Dependencies above; each under its own license).
