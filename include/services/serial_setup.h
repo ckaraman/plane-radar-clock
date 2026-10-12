@@ -11,7 +11,11 @@ namespace services::serial_setup {
  *   PR:SET {json}         -> PR:OK {...} | PR:ERR {"msg":code}
  *                            json keys (all optional): ssid, pass, lat, lon, tz,
  *                            clock, miles, runways
- *   PR:RESET              -> PR:OK, then wipes Wi-Fi/location/units and reboots
+ *   PR:MAPBEGIN {len,crc} -> PR:MAPACK {seq}   start a map upload (see map_store.h)
+ *   PR:MAP <seq> <b64>    -> PR:MAPACK {seq}   one chunk of the map blob
+ *   PR:MAPEND             -> PR:OK {map} | PR:ERR {"msg":"bad_map"}
+ *   PR:MAPCLEAR           -> PR:OK
+ *   PR:RESET              -> PR:OK, then wipes Wi-Fi/location/units/map and reboots
  * Anything not starting with "PR:" (normal log output) is ignored.
  *
  * poll() is cheap when idle; call it from every loop that can run for a while
