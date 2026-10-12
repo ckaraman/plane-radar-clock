@@ -168,6 +168,7 @@
         <label><input type="checkbox" id="opt-clock" checked> Gökyüzünde uçak yokken saati göster</label>
         <label><input type="checkbox" id="opt-miles"> Mesafeleri mil olarak göster</label>
         <label><input type="checkbox" id="opt-runways" checked> Havalimanı pistlerini göster</label>
+        <label><input type="checkbox" id="opt-rings" checked> Radar halkalarını ve artı çizgilerini göster (kapatırsanız yalnızca harita, uçaklar ve yön harfleri görünür)</label>
       </div>
 
       <label for="opt-map">Radarın arkasına harita (deniz, kıyı çizgisi, otoyol ve devlet yolları)</label>
@@ -540,6 +541,8 @@
     $('#opt-clock').checked = !!d.clock;
     $('#opt-miles').checked = !!d.miles;
     $('#opt-runways').checked = !!d.runways;
+    $('#opt-rings').disabled = d.rings === undefined;   // old firmware: no ring option
+    $('#opt-rings').checked = d.rings === undefined ? true : !!d.rings;
     $('#opt-map').disabled = d.map === undefined;      // old firmware: no map support
     if (d.map === undefined) $('#opt-map').value = '0';
     else { try { const v = localStorage.getItem('mapRange'); if (v && [...$('#opt-map').options].some((o) => o.value === v)) $('#opt-map').value = v; } catch (_) { /* optional */ } }
@@ -1007,6 +1010,7 @@
       miles: $('#opt-miles').checked,
       runways: $('#opt-runways').checked,
     };
+    if (!$('#opt-rings').disabled) payload.rings = $('#opt-rings').checked;
     if (ssid.trim()) { payload.ssid = ssid; payload.pass = pass; }
 
     btn.disabled = true;

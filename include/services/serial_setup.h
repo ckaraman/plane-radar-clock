@@ -6,11 +6,11 @@ namespace services::serial_setup {
  * USB setup channel for the web setup page (docs: web/index.html).
  *
  * Line protocol over the USB serial port, one command per line:
- *   PR:HELLO              -> PR:HELLO {fw, mac, wifi, ssid, ip, lat, lon, tz, clock, miles, runways}
+ *   PR:HELLO              -> PR:HELLO {fw, mac, wifi, ssid, ip, lat, lon, tz, clock, miles, runways, rings, map, mapv}
  *   PR:SCAN               -> PR:SCAN {"nets":[{"s":ssid,"r":rssi,"o":open}, ...]}
  *   PR:SET {json}         -> PR:OK {...} | PR:ERR {"msg":code}
  *                            json keys (all optional): ssid, pass, lat, lon, tz,
- *                            clock, miles, runways
+ *                            clock, miles, runways, rings
  *   PR:MAPBEGIN {len,crc} -> PR:MAPACK {seq}   start a map upload (see map_store.h)
  *   PR:MAP <seq> <b64>    -> PR:MAPACK {seq}   one chunk of the map blob
  *   PR:MAPEND             -> PR:OK {map} | PR:ERR {"msg":"bad_map"}

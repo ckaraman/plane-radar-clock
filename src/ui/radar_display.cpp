@@ -684,8 +684,10 @@ void drawStaticGrid(Gfx& gfx) {
 
   gfx.fillScreen(radar::kColorBackground);
   mapoverlay::draw(gfx);  // coast lines and roads sit under the grid
-  drawRings(cx, cy, grid_r);
-  drawCrosshairs(cx, cy, grid_r, radar::kColorGrid);
+  if (radar::showRings()) {
+    drawRings(cx, cy, grid_r);
+    drawCrosshairs(cx, cy, grid_r, radar::kColorGrid);
+  }
   initPalette();
   runway::drawLargeAirportRunways(gfx);
   drawCenterDot(cx, cy);

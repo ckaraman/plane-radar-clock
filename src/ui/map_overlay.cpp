@@ -19,9 +19,9 @@ constexpr float kDegToRad = 0.01745329252f;
 
 // Muted on purpose: the map must stay behind the grid and the aircraft, but the
 // sea is a clearly lighter tone than the land (which stays the radar background).
-constexpr uint8_t kWaterR = 14, kWaterG = 44, kWaterB = 88;
+constexpr uint8_t kWaterR = 11, kWaterG = 34, kWaterB = 70;
 constexpr uint8_t kCoastR = 70, kCoastG = 140, kCoastB = 220;
-constexpr uint8_t kRoadR = 225, kRoadG = 120, kRoadB = 20;  // orange
+constexpr uint8_t kRoadR = 170, kRoadG = 92, kRoadB = 20;  // muted orange
 
 constexpr int kMaskStride = (radar::kSize + 7) / 8;
 constexpr size_t kMaskBytes = static_cast<size_t>(kMaskStride) * radar::kSize;

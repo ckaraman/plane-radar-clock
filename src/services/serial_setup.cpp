@@ -92,6 +92,7 @@ void sendHello() {
   doc["clock"] = services::clock::enabled();
   doc["miles"] = ui::radar::useMiles();
   doc["runways"] = ui::radar::showRunways();
+  doc["rings"] = ui::radar::showRings();
   doc["map"] = static_cast<uint32_t>(services::map::size());
   doc["mapv"] = services::map::kBlobVersion;
   sendReply("HELLO", doc);
@@ -273,6 +274,9 @@ void handleSet(const char* json) {
   }
   if (doc["runways"].is<bool>()) {
     ui::radar::saveRunwaysFromPortal(doc["runways"].as<bool>() ? "T" : "");
+  }
+  if (doc["rings"].is<bool>()) {
+    ui::radar::saveRingsFromPortal(doc["rings"].as<bool>() ? "T" : "");
   }
 
   if (ssid[0] == '\0') {

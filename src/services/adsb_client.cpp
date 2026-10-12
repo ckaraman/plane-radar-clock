@@ -227,7 +227,20 @@ void formatAltitudeTag(const JsonObject& plane, char* out, size_t out_len) {
   float alt = 0.0f;
   if (readJsonFloat(plane, "alt_baro", &alt) ||
       readJsonFloat(plane, "alt_geom", &alt)) {
-    snprintf(out, out_len, "%d ft", static_cast<int>(lroundf(alt)));
+    const int ft = static_cast<int>(lroundf(alt));
+    if (ft >= 1000 || ft <= -1000) {
+      // 1.2K ft / 35K ft: keeps the tag short; one decimal only when it is not .0
+      const int tenths = static_cast<int>(lroundf(static_cast<float>(ft) / 100.0f));
+      const int whole = tenths / 10;
+      const int dec = (tenths < 0 ? -tenths : tenths) % 10;
+      if (dec == 0) {
+        snprintf(out, out_len, "%dK ft", whole);
+      } else {
+        snprintf(out, out_len, "%s%d.%dK ft", tenths < 0 && whole == 0 ? "-" : "", whole, dec);
+      }
+    } else {
+      snprintf(out, out_len, "%d ft", ft);
+    }
   }
 }
 
