@@ -1042,6 +1042,12 @@
       const r = await fetch('version.json', { cache: 'no-store' });
       state.latest = (await r.json()).version || null;
     } catch (_) { state.latest = null; }
+    // The installer fetches its manifest with normal caching (up to ~10 min on GitHub Pages), which
+    // could offer the previous version. A unique query string always fetches the current one.
+    for (const id of ['install-update', 'install-full']) {
+      const el = $('#' + id), base = el && (el.getAttribute('manifest') || '').split('?')[0];
+      if (el && base) el.setAttribute('manifest', base + '?v=' + encodeURIComponent(state.latest || '') + '&t=' + Date.now());
+    }
     renderVersion();
   }
 
