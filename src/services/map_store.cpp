@@ -21,6 +21,7 @@ struct FlashHeader {
 
 uint8_t* s_active = nullptr;
 size_t s_active_len = 0;
+uint32_t s_generation = 1;
 
 uint8_t* s_stage = nullptr;
 size_t s_stage_len = 0;
@@ -41,7 +42,8 @@ uint16_t rd16(const uint8_t* p) {
 // The blob must be exactly consumed by its polylines; anything else is rejected
 // so a damaged upload can never make the radar read outside the buffer.
 bool validBlob(const uint8_t* b, size_t n) {
-  if (n < kHeaderBytes || n > kMaxBytes || b[0] != 'P' || b[1] != 'M' || b[2] != 1) {
+  if (n < kHeaderBytes || n > kMaxBytes || b[0] != 'P' || b[1] != 'M' || b[2] < 1 ||
+      b[2] > kBlobVersion) {
     return false;
   }
   const uint16_t count = rd16(b + 12);
@@ -106,6 +108,7 @@ void init() {
 
 const uint8_t* data() { return s_active; }
 size_t size() { return s_active_len; }
+uint32_t generation() { return s_generation; }
 
 bool beginStaging(size_t length, uint32_t crc) {
   freeStage();
@@ -113,6 +116,14 @@ bool beginStaging(size_t length, uint32_t crc) {
     return false;
   }
   s_stage = static_cast<uint8_t*>(malloc(length));
+  if (s_stage == nullptr && s_active != nullptr) {
+    // Low on RAM: give up the old map (it is replaced anyway) and try again.
+    free(s_active);
+    ++s_generation;
+    s_active = nullptr;
+    s_active_len = 0;
+    s_stage = static_cast<uint8_t*>(malloc(length));
+  }
   if (s_stage == nullptr) {
     return false;
   }
@@ -152,6 +163,7 @@ bool commit() {
     return false;
   }
   free(s_active);
+  ++s_generation;
   s_active = s_stage;
   s_active_len = s_stage_len;
   s_stage = nullptr;
@@ -164,6 +176,7 @@ void abortStaging() { freeStage(); }
 void clear() {
   freeStage();
   free(s_active);
+  ++s_generation;
   s_active = nullptr;
   s_active_len = 0;
   const esp_partition_t* part = partition();

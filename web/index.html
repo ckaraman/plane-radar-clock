@@ -168,9 +168,9 @@
         <label><input type="checkbox" id="opt-clock" checked> Gökyüzünde uçak yokken saati göster</label>
         <label><input type="checkbox" id="opt-miles"> Mesafeleri mil olarak göster</label>
         <label><input type="checkbox" id="opt-runways" checked> Havalimanı pistlerini göster</label>
-        <label><input type="checkbox" id="opt-map" checked> Radarın arkasına harita çiz (kıyı çizgisi ve ana yollar)</label>
+        <label><input type="checkbox" id="opt-map" checked> Radarın arkasına harita çiz (deniz, kıyı çizgisi ve ana yollar)</label>
       </div>
-      <small id="map-note">Harita, seçtiğiniz konumun yaklaşık 36 km çevresi için internetten indirilip cihaza yazılır; konumu değiştirdiğinizde yeniden indirilir.</small>
+      <small id="map-note">Harita, seçtiğiniz konumun yaklaşık 36 km çevresi (deniz, kıyı, otoyol ve devlet yolları) için internetten indirilip cihaza yazılır; konumu değiştirdiğinizde yeniden indirilir.</small>
 
       <div class="row" style="margin-top:18px">
         <button type="submit" class="btn primary" id="btn-save">Cihaza kaydet</button>
@@ -642,7 +642,7 @@
   // ------------------------------------------------------------------ map
   // Coast lines and main roads around the chosen location, from OpenStreetMap.
   // Binary format and limits: include/services/map_store.h in the firmware.
-  const MAP_RADIUS_KM = 36, MAP_MAX_POINTS = 3500, MAP_MAX_BYTES = 23500, KM_PER_DEG = 111;
+  const MAP_RADIUS_KM = 36, MAP_FETCH_KM = 45, MAP_MAX_POINTS = 3000, MAP_MAX_RING_POINTS = 2500, MAP_MAX_BYTES = 31000, KM_PER_DEG = 111;
   const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
   function crc32(bytes) {
@@ -657,10 +657,10 @@
   }
 
   async function fetchOverpass(lat, lon) {
-    const dLat = MAP_RADIUS_KM / KM_PER_DEG, dLon = MAP_RADIUS_KM / (KM_PER_DEG * Math.cos(lat * Math.PI / 180));
+    const dLat = MAP_FETCH_KM / KM_PER_DEG, dLon = MAP_FETCH_KM / (KM_PER_DEG * Math.cos(lat * Math.PI / 180));
     const bbox = [lat - dLat, lon - dLon, lat + dLat, lon + dLon].map((v) => v.toFixed(5)).join(',');
     const q = '[out:json][timeout:40];(way["natural"="coastline"](' + bbox + ');' +
-      'way["highway"~"^(motorway|trunk|primary)$"](' + bbox + '););out geom(' + bbox + ');';
+      'way["highway"~"^(motorway|trunk)$"](' + bbox + '););out geom(' + bbox + ');';
     let lastErr = null;
     for (const url of OVERPASS) {
       try {
@@ -700,59 +700,201 @@
     return pts.filter((_, i) => keep[i]);
   }
 
-  function buildMapBlob(elements, lat, lon) {
-    const cosL = Math.cos(lat * Math.PI / 180);
-    const runs = [];                     // {type, pts:[[x_km,y_km],...]}
+  // ---- Geometry helpers (all in km, x = east, y = north, origin = chosen location) ----
+  const TAU = Math.PI * 2;
+
+  // Splits a polyline into the parts that lie inside the circle, cutting exactly at the circle.
+  function clipCircle(pts, R) {
+    const out = [];
+    let cur = null;
+    const inside = (p) => Math.hypot(p[0], p[1]) <= R;
+    let prev = pts[0];
+    if (inside(prev)) cur = { pts: [prev], entry: false, exit: false };
+    for (let i = 1; i < pts.length; i++) {
+      const a = prev, b = pts[i];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const A = dx * dx + dy * dy, B = 2 * (a[0] * dx + a[1] * dy), C = a[0] * a[0] + a[1] * a[1] - R * R;
+      const ts = [];
+      if (A > 1e-12) {
+        const D = B * B - 4 * A * C;
+        if (D > 0) {
+          const sq = Math.sqrt(D), t1 = (-B - sq) / (2 * A), t2 = (-B + sq) / (2 * A);
+          if (t1 > 0 && t1 < 1) ts.push(t1);
+          if (t2 > 0 && t2 < 1) ts.push(t2);
+        }
+      }
+      let state = cur !== null;
+      for (const t of ts) {
+        const ip = [a[0] + dx * t, a[1] + dy * t];
+        if (state) { cur.pts.push(ip); cur.exit = true; out.push(cur); cur = null; state = false; }
+        else { cur = { pts: [ip], entry: true, exit: false }; state = true; }
+      }
+      if (state && cur) cur.pts.push(b);
+      prev = b;
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  // Joins coastline ways that share an end node (direction is preserved: land on the left).
+  function stitchCoast(parts) {
+    const byStart = new Map();
+    parts.forEach((p, i) => byStart.set(p.k0, i));
+    const hasPred = new Set();
+    parts.forEach((p) => { if (byStart.has(p.k1)) hasPred.add(byStart.get(p.k1)); });
+    const used = new Array(parts.length).fill(false), chains = [];
+    const follow = (i) => {
+      const pts = parts[i].pts.slice();
+      used[i] = true;
+      let k = parts[i].k1;
+      while (byStart.has(k)) {
+        const j = byStart.get(k);
+        if (used[j]) break;
+        used[j] = true;
+        for (let q = 1; q < parts[j].pts.length; q++) pts.push(parts[j].pts[q]);
+        k = parts[j].k1;
+      }
+      return pts;
+    };
+    parts.forEach((p, i) => { if (!used[i] && !hasPred.has(i)) chains.push(follow(i)); });
+    parts.forEach((p, i) => { if (!used[i]) chains.push(follow(i)); });
+    return chains;
+  }
+
+  const polyLen = (s) => { let len = 0; for (let i = 1; i < s.length; i++) len += Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1]); return len; };
+  const signedArea = (r) => { let a = 0; for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+
+  // Sea polygons: the coastline keeps the water on its right, so each open piece is closed by
+  // following the circle clockwise to the next piece. Closed coastlines (islands) become holes.
+  function buildSeaRings(open, loops, R) {
+    const ang = (p) => Math.atan2(p[1], p[0]);
+    const rings = [];
+    const used = new Array(open.length).fill(false);
+    for (let s = 0; s < open.length; s++) {
+      if (used[s]) continue;
+      const ring = [];
+      let i = s;
+      for (let guard = 0; guard <= open.length; guard++) {
+        used[i] = true;
+        const p = open[i];
+        for (const q of p) ring.push(q);
+        const ea = ang(p[p.length - 1]);
+        let best = -1, bestD = Infinity;
+        for (let j = 0; j < open.length; j++) {
+          if (used[j] && j !== s) continue;
+          const d = (((ea - ang(open[j][0])) % TAU) + TAU) % TAU;
+          if (d < bestD) { bestD = d; best = j; }
+        }
+        const steps = Math.ceil(bestD / (5 * Math.PI / 180));
+        for (let k = 1; k < steps; k++) { const a = ea - bestD * k / steps; ring.push([R * Math.cos(a), R * Math.sin(a)]); }
+        if (best === s || best < 0) break;
+        i = best;
+      }
+      if (ring.length >= 3) rings.push(ring);
+    }
+    const ccw = loops.filter((l) => signedArea(l) > 0), cw = loops.filter((l) => signedArea(l) <= 0);
+    if (open.length) {
+      for (const l of loops) rings.push(l);
+    } else if (ccw.length) {
+      const disk = []; for (let k = 0; k < 72; k++) { const a = -TAU * k / 72; disk.push([R * Math.cos(a), R * Math.sin(a)]); }
+      rings.push(disk); for (const l of ccw) rings.push(l);
+    } else {
+      for (const l of cw) rings.push(l);
+    }
+    return rings;
+  }
+
+  function buildMapBlob(elements, lat, lon, withWater) {
+    const cosL = Math.cos(lat * Math.PI / 180), R = MAP_RADIUS_KM;
+    const roads = [];                    // {type:1, pts}
+    const coastParts = [];               // raw ways split at points outside the downloaded box
     for (const el of elements) {
       if (el.type !== 'way' || !Array.isArray(el.geometry)) continue;
-      const type = el.tags && el.tags.natural === 'coastline' ? 0 : 1;
-      let cur = [];
-      const flush = () => { if (cur.length >= 2) runs.push({ type, hw: el.tags && el.tags.highway, pts: cur }); cur = []; };
+      const coastline = el.tags && el.tags.natural === 'coastline';
+      let cur = [], keys = [];
+      const flush = () => {
+        if (cur.length >= 2) {
+          if (coastline) coastParts.push({ pts: cur, k0: keys[0], k1: keys[keys.length - 1] });
+          else for (const c of clipCircle(cur, R)) if (c.pts.length >= 2) roads.push({ type: 1, hw: el.tags && el.tags.highway, pts: c.pts });
+        }
+        cur = []; keys = [];
+      };
       for (const g of el.geometry) {
         if (!g) { flush(); continue; }   // point outside the requested box
-        const x = (g.lon - lon) * KM_PER_DEG * cosL, y = (g.lat - lat) * KM_PER_DEG;
-        if (Math.hypot(x, y) > MAP_RADIUS_KM) { flush(); continue; }
-        cur.push([x, y]);
+        cur.push([(g.lon - lon) * KM_PER_DEG * cosL, (g.lat - lat) * KM_PER_DEG]);
+        keys.push(g.lat.toFixed(7) + ',' + g.lon.toFixed(7));
       }
       flush();
     }
-    // Fit into the device budget: first simplify harder, then drop the least important lines.
-    const prio = (r) => r.type === 0 ? 0 : (r.hw === 'motorway' || r.hw === 'trunk' ? 1 : 2);
-    const minRoad = 0.4; let tol = 0.03, last = [];
-    const fits = (n, pts) => pts <= MAP_MAX_POINTS && 14 + n * 3 + pts * 4 <= MAP_MAX_BYTES && n < 65535;
-    let built = null;
-    for (let iter = 0; iter < 7 && !built; iter++) {
-      const lines = [];
-      let points = 0;
-      for (const r of runs) {
-        const s = simplify(r.pts, tol);
-        if (s.length < 2) continue;
-        let len = 0;
-        for (let i = 1; i < s.length; i++) len += Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1]);
-        if (len < (r.type === 0 ? 0.15 : minRoad)) continue;   // tiny fragments are only noise at this size
-        lines.push({ type: r.type, p: prio(r), len, pts: s }); points += s.length;
+
+    // Coast: stitch, clip to the circle, separate open pieces from closed islands.
+    const openPieces = [], loops = [], coastLines = [];
+    for (const chain of stitchCoast(coastParts)) {
+      const closed = chain.length > 3 && Math.hypot(chain[0][0] - chain[chain.length - 1][0], chain[0][1] - chain[chain.length - 1][1]) < 1e-6;
+      const pieces = clipCircle(chain, R);
+      if (closed && pieces.length > 1 && !pieces[0].entry && !pieces[pieces.length - 1].exit) {
+        const last = pieces.pop(), first = pieces.shift();
+        pieces.push({ pts: last.pts.concat(first.pts.slice(1)), entry: last.entry, exit: first.exit });
       }
-      last = lines;
-      if (fits(lines.length, points)) built = { lines, points, bytes: 14 + lines.length * 3 + points * 4 };
-      tol *= 1.4;
-    }
-    if (!built) {                                              // still too much: keep the most important/longest lines
-      const sorted = last.slice().sort((a, b) => a.p - b.p || b.len - a.len);
-      const lines = []; let points = 0;
-      for (const l of sorted) {
-        if (!fits(lines.length + 1, points + l.pts.length)) continue;
-        lines.push(l); points += l.pts.length;
+      for (const c of pieces) {
+        if (c.pts.length < 2) continue;
+        if (closed && pieces.length === 1 && !c.entry && !c.exit) loops.push(c.pts);
+        else if (c.entry && c.exit) openPieces.push(c.pts);
+        else coastLines.push(c.pts);     // data ends inside the circle: outline only
       }
-      built = { lines, points, bytes: 14 + lines.length * 3 + points * 4 };
     }
+
+    const COAST_PTS = 1800;              // share of the line budget reserved for the coast
+    const roadPrio = (r) => r.hw === 'motorway' ? 1 : 2;
+
+    // 1) Coast + sea: simplify just enough that the outline and the sea polygons fit.
+    let tol = 0.03, coast = null;
+    for (let iter = 0; iter < 10; iter++, tol *= 1.4) {
+      const lines = [], simpleOpen = [], simpleLoops = [];
+      let pts = 0;
+      const add = (s) => { lines.push({ type: 0, pts: s }); pts += s.length; };
+      for (const c of openPieces) { const s = simplify(c, tol); if (s.length >= 2) simpleOpen.push(s); if (polyLen(s) >= 0.15) add(s); }
+      for (const c of loops) { const s = simplify(c, tol); if (s.length >= 4 && polyLen(s) >= 0.6) { simpleLoops.push(s.slice(0, -1)); add(s); } }
+      for (const c of coastLines) { const s = simplify(c, tol); if (s.length >= 2 && polyLen(s) >= 0.15) add(s); }
+      simpleLoops.sort((x, y) => Math.abs(signedArea(y)) - Math.abs(signedArea(x)));
+      const rings = withWater ? buildSeaRings(simpleOpen, simpleLoops.slice(0, 50), R) : [];
+      const ringPts = rings.reduce((n, r) => n + r.length, 0);
+      coast = { lines, pts, rings, ringPts };
+      if (pts <= COAST_PTS && ringPts <= MAP_MAX_RING_POINTS) break;
+    }
+    if (coast.ringPts > MAP_MAX_RING_POINTS) { coast.rings = []; coast.ringPts = 0; }   // sea fill does not fit: outline only
+    while (coast.pts > MAP_MAX_POINTS && coast.lines.length) {                             // extreme coastline: drop the shortest pieces
+      coast.lines.sort((x, y) => polyLen(y.pts) - polyLen(x.pts));
+      coast.pts -= coast.lines.pop().pts.length;
+    }
+
+    // 2) Roads: motorways first, then trunk roads, longest first, as many as fit.
+    const roadLines = [];
+    for (const r of roads) {
+      const s = simplify(r.pts, Math.max(tol, 0.05));
+      if (s.length >= 2 && polyLen(s) >= 0.4) roadLines.push({ type: 1, p: roadPrio(r), len: polyLen(s), pts: s });
+    }
+    roadLines.sort((x, y) => x.p - y.p || y.len - x.len);
+    const lines = coast.lines.slice();
+    let linePts = coast.pts;
+    const bytesFor = (nl, lp) => 14 + (nl + coast.rings.length) * 3 + (lp + coast.ringPts) * 4;
+    for (const l of roadLines) {
+      if (linePts + l.pts.length > MAP_MAX_POINTS || bytesFor(lines.length + 1, linePts + l.pts.length) > MAP_MAX_BYTES) continue;
+      lines.push(l); linePts += l.pts.length;
+    }
+    const built = { lines, rings: coast.rings, linePts, ringPts: coast.ringPts };
     if (!built.lines.length) return null;                     // nothing to draw here
-    const buf = new ArrayBuffer(built.bytes), dv = new DataView(buf);
-    dv.setUint8(0, 0x50); dv.setUint8(1, 0x4D); dv.setUint8(2, 1); dv.setUint8(3, 0);
+    // Draw order on the device: roads, then coast lines (on top of the sea fill), rings are masked separately.
+    built.lines.sort((a, b) => b.type - a.type);
+    const all = built.lines.map((l) => ({ type: l.type, pts: l.pts })).concat(built.rings.map((r) => ({ type: 2, pts: r })));
+    const bytes = 14 + all.length * 3 + (built.linePts + built.ringPts) * 4;
+    const buf = new ArrayBuffer(bytes), dv = new DataView(buf);
+    dv.setUint8(0, 0x50); dv.setUint8(1, 0x4D); dv.setUint8(2, built.rings.length ? 2 : 1); dv.setUint8(3, 0);
     dv.setInt32(4, Math.round(lat * 1e7), true); dv.setInt32(8, Math.round(lon * 1e7), true);
-    dv.setUint16(12, built.lines.length, true);
+    dv.setUint16(12, all.length, true);
     let o = 14;
     const q = (v) => Math.max(-32767, Math.min(32767, Math.round(v * 100)));   // 10 m units
-    for (const l of built.lines) {
+    for (const l of all) {
       dv.setUint8(o, l.type); dv.setUint16(o + 1, l.pts.length, true); o += 3;
       for (const [x, y] of l.pts) { dv.setInt16(o, q(x), true); dv.setInt16(o + 2, q(y), true); o += 4; }
     }
@@ -790,11 +932,13 @@
     try {
       setMsg(msg, 'info', 'Harita indiriliyor… (birkaç saniye sürebilir)');
       const elements = await fetchOverpass(lat, lon);
-      const blob = buildMapBlob(elements, lat, lon);
+      const water = (dev.mapv || 1) >= 2;
+      const blob = buildMapBlob(elements, lat, lon, water);
       if (!blob) return ' Bu konumda çizilecek kıyı ya da ana yol bulunamadı, harita eklenmedi.';
       await uploadMap(blob, (p) => setMsg(msg, 'info', 'Harita cihaza yazılıyor… %' + p));
       dev.map = blob.length;
-      return ' Harita da yüklendi (' + Math.round(blob.length / 1024) + ' KB).';
+      return ' Harita da yüklendi (' + Math.round(blob.length / 1024) + ' KB).' +
+        (water ? '' : ' Deniz dolgusu için önce 3. adımdan yazılımı güncelleyin.');
     } catch (e) {
       const m = e && e.message ? e.message : '';
       return ' Harita eklenemedi (' + (ERRORS[m] || (m === 'too-big' ? 'çok ayrıntılı' : 'internetten indirilemedi')) + '); diğer ayarlar kaydedildi. Daha sonra tekrar deneyebilirsiniz.';

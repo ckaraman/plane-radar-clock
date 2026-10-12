@@ -63,11 +63,15 @@ After a reset, the device reboots and shows the setup screen immediately (no “
 
 The page talks to the firmware over the USB serial port with a line protocol (`PR:HELLO`, `PR:SCAN`, `PR:SET {json}`, `PR:RESET`; see `include/services/serial_setup.h`). Ordinary log lines are ignored, so Serial Monitor still works.
 
-**Updating:** the same page has an *update* button (ESP Web Tools). It writes only the application at `0x10000`, so Wi-Fi/location/time zone stay on the device. *Full install* (under "Gelişmiş") writes the merged image at `0x0` and **erases the settings**; use it for blank devices or if a release changes the partition table (`partitions/`).
+**Updating:** the same page has an *update* button (ESP Web Tools). It writes bootloader, partition table and application (`0x0`, `0x8000`, `0x10000`) but not the settings area, so Wi-Fi/location/time zone stay on the device. In the installer dialog leave *Erase device* unticked. ESP Web Tools erases the whole flash by default for firmware that does not speak Improv Serial, which is why the manifests set `new_install_prompt_erase: true` (it shows the checkbox). *Full install* (under "Gelişmiş") writes the merged image at `0x0` and **erases the settings**; use it for blank devices or if a release changes the partition table (`partitions/`).
 
 To publish: in the repository, **Settings → Pages → Source: GitHub Actions**. Every push to `main` builds the firmware and redeploys the site. Bump `kFirmwareVersion` in `config.h` for each release, the page compares it with the version on the device.
 
 To flash devices before shipping, write `firmware-merged.bin` at `0x0` (the *Full install* button does this, or `esptool`). A device without saved Wi-Fi shows the yellow setup screen and can still be set up through the old Wi-Fi portal (`PlaneRadar-Setup`, no password).
+
+## Map layer (sea, coast lines and main roads)
+
+The setup page can draw the coast line and main roads (motorway and trunk only) behind the radar. When you press *Cihaza kaydet* with *Radarın arkasına harita çiz* ticked, the page downloads the data for about 36 km around the chosen location from OpenStreetMap (Overpass API), builds sea polygons from the coastline (OSM keeps water on the right of the coastline), simplifies it to at most ~3000 line points plus ~2500 sea points (~15-30 KB) and sends it over USB (`PR:MAPBEGIN` / `PR:MAP` / `PR:MAPEND`, every chunk acknowledged). The device keeps it in the unused `spiffs` partition (raw, no file system) and draws it under the grid (`src/ui/map_overlay.cpp`). The sea is filled with a lighter tone through a cached 1-bit mask (rebuilt only on zoom/map change). Colors are `kWater*` / `kCoast*` / `kRoad*` in that file. Blob version 2 adds type-2 sea rings (even-odd fill); `HELLO` reports `mapv`, and the page only sends sea rings to firmware with `mapv` >= 2. Map data © OpenStreetMap contributors (ODbL). The map is removed by *Ayarları sıfırla* and by the BOOT long press.
 
 ## Radar display
 

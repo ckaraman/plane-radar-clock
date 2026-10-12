@@ -93,6 +93,7 @@ void sendHello() {
   doc["miles"] = ui::radar::useMiles();
   doc["runways"] = ui::radar::showRunways();
   doc["map"] = static_cast<uint32_t>(services::map::size());
+  doc["mapv"] = services::map::kBlobVersion;
   sendReply("HELLO", doc);
 }
 

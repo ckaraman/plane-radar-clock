@@ -15,6 +15,7 @@ namespace services::serial_setup {
  *   PR:MAP <seq> <b64>    -> PR:MAPACK {seq}   one chunk of the map blob
  *   PR:MAPEND             -> PR:OK {map} | PR:ERR {"msg":"bad_map"}
  *   PR:MAPCLEAR           -> PR:OK
+ *   (HELLO also reports "map" = stored bytes and "mapv" = newest supported blob version)
  *   PR:RESET              -> PR:OK, then wipes Wi-Fi/location/units/map and reboots
  * Anything not starting with "PR:" (normal log output) is ignored.
  *
