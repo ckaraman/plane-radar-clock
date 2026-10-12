@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "config.h"
 #include "services/map_store.h"
 #include "services/radar_location.h"
 #include "ui/radar_range.h"
@@ -20,7 +21,7 @@ constexpr float kDegToRad = 0.01745329252f;
 // sea is a clearly lighter tone than the land (which stays the radar background).
 constexpr uint8_t kWaterR = 14, kWaterG = 44, kWaterB = 88;
 constexpr uint8_t kCoastR = 70, kCoastG = 140, kCoastB = 220;
-constexpr uint8_t kRoadR = 105, kRoadG = 96, kRoadB = 52;
+constexpr uint8_t kRoadR = 96, kRoadG = 96, kRoadB = 100;  // soft grey
 
 constexpr int kMaskStride = (radar::kSize + 7) / 8;
 constexpr size_t kMaskBytes = static_cast<size_t>(kMaskStride) * radar::kSize;
@@ -33,6 +34,11 @@ uint32_t s_key_gen = 0;
 float s_key_scale = 0.0f;
 float s_key_ox = 0.0f;
 float s_key_oy = 0.0f;
+
+// The GC9A01 here is a BGR panel (see radar_display.cpp): swap R/B so the colors read as written.
+uint16_t panelColor(lgfx::LGFXBase& gfx, uint8_t r, uint8_t g, uint8_t b) {
+  return config::kDisplayRgbOrder ? gfx.color565(b, g, r) : gfx.color565(r, g, b);
+}
 
 int16_t rdI16(const uint8_t* p) {
   int16_t v;
@@ -201,11 +207,11 @@ void draw(lgfx::LGFXBase& gfx) {
         oy != s_key_oy) {
       rebuildMask(blob, size, count, ox, oy, scale);
     }
-    drawMask(gfx, gfx.color565(kWaterR, kWaterG, kWaterB));
+    drawMask(gfx, panelColor(gfx, kWaterR, kWaterG, kWaterB));
   }
 
-  const uint16_t coast = gfx.color565(kCoastR, kCoastG, kCoastB);
-  const uint16_t road = gfx.color565(kRoadR, kRoadG, kRoadB);
+  const uint16_t coast = panelColor(gfx, kCoastR, kCoastG, kCoastB);
+  const uint16_t road = panelColor(gfx, kRoadR, kRoadG, kRoadB);
   constexpr float kLo = -8.0f;
   constexpr float kHi = static_cast<float>(radar::kSize) + 8.0f;
 

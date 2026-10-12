@@ -170,15 +170,15 @@
         <label><input type="checkbox" id="opt-runways" checked> Havalimanı pistlerini göster</label>
       </div>
 
-      <label for="opt-map">Radarın arkasına harita (deniz, kıyı, otoyol ve devlet yolları)</label>
+      <label for="opt-map">Radarın arkasına harita (deniz, kıyı çizgisi, otoyol ve devlet yolları)</label>
       <select id="opt-map">
-        <option value="25">Haritayı 25 km çapında çiz (en geniş)</option>
-        <option value="20">Haritayı 20 km çapında çiz</option>
-        <option value="15">Haritayı 15 km çapında çiz</option>
-        <option value="10">Haritayı 10 km çapında çiz</option>
+        <option value="17">17 km menzile kadar — ekran kenarı 22,7 km (en geniş haritalı menzil)</option>
+        <option value="15">15 km menzile kadar — ekran kenarı 20 km</option>
+        <option value="10">10 km menzile kadar — ekran kenarı 13,3 km</option>
+        <option value="5">5 km menzile kadar — ekran kenarı 6,7 km</option>
         <option value="0">Haritasız (harita verisi indirilmez)</option>
       </select>
-      <small id="map-note">Cihazdaki en geniş menzil (ekranda 25 km, kenarı yaklaşık 33 km) haritasız çalışır: o menzile geçince harita gösterilmez, yalnızca radar görünür. Diğer menzillerde (en çok yaklaşık 23 km) harita çizilir. Harita, seçtiğiniz konumun etrafında seçtiğiniz km kadar internetten indirilip cihaza yazılır; küçük seçmek daha az veri indirir. "Haritasız" seçerseniz hiçbir harita verisi indirilmez ve cihazdaki eski harita silinir. Konumu ya da menzili değiştirdiğinizde yeniden indirilir.</small>
+      <small id="map-note"></small>
 
       <div class="row" style="margin-top:18px">
         <button type="submit" class="btn primary" id="btn-save">Cihaza kaydet</button>
@@ -542,10 +542,11 @@
     $('#opt-runways').checked = !!d.runways;
     $('#opt-map').disabled = d.map === undefined;      // old firmware: no map support
     if (d.map === undefined) $('#opt-map').value = '0';
-    else { try { const v = localStorage.getItem('mapKm'); if (v && [...$('#opt-map').options].some((o) => o.value === v)) $('#opt-map').value = v; } catch (_) { /* optional */ } }
+    else { try { const v = localStorage.getItem('mapRange'); if (v && [...$('#opt-map').options].some((o) => o.value === v)) $('#opt-map').value = v; } catch (_) { /* optional */ } }
     $('#ssid').value = d.wifi ? d.ssid : '';
     $('#pass').value = '';
     updateMapLink();
+    updateMapNote();
   }
 
   function updateMapLink() {
@@ -651,7 +652,12 @@
   // ------------------------------------------------------------------ map
   // Coast lines and main roads around the chosen location, from OpenStreetMap.
   // Binary format and limits: include/services/map_store.h in the firmware.
-  const MAP_MAX_KM = 25, MAP_MAX_POINTS = 3000, MAP_MAX_RING_POINTS = 2500, MAP_MAX_BYTES = 31000, KM_PER_DEG = 111;
+  // Device range presets: label km (shown on ring 3) -> outer ring = label x 4/3. The map must also fill
+  // the screen beyond the outer ring (the round screen reaches ~1.12 x the outer ring), so it is
+  // downloaded to 1.13 x the outer ring of the widest range the person picks.
+  const MAP_RANGES = { 5: 5 * 4 / 3, 10: 10 * 4 / 3, 15: 15 * 4 / 3, 17: 17 * 4 / 3 };
+  const mapRadiusFor = (label) => MAP_RANGES[label] ? Math.ceil(MAP_RANGES[label] * 1.13 * 10) / 10 : 0;
+  const MAP_MAX_KM = 26, MAP_MAX_POINTS = 3000, MAP_MAX_RING_POINTS = 2500, MAP_MAX_BYTES = 31000, KM_PER_DEG = 111;
   const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
   function crc32(bytes) {
@@ -931,9 +937,17 @@
   }
 
   // Returns a short note for the save message ('' when the map step was skipped).
+  function updateMapNote() {
+    const label = parseInt($('#opt-map').value, 10) || 0, r = mapRadiusFor(label);
+    $('#map-note').textContent = (label
+      ? 'Cihazda en çok ' + label + ' km menzile (ekran kenarı ' + (MAP_RANGES[label]).toFixed(1).replace('.', ',') + ' km) geçecekseniz bu seçim yeter: harita, ekranın kenarını da dolduracak şekilde konumunuzun etrafında ' + String(r).replace('.', ',') + ' km yarıçapla indirilir ve daha küçük menzillerde de çizilir. '
+      : '"Haritasız" seçerseniz hiçbir harita verisi indirilmez ve cihazdaki eski harita silinir. ') +
+      'Cihazdaki en geniş menzil (ekranda 25 km, kenarı yaklaşık 33 km) her zaman haritasız çalışır. Konumu ya da bu seçimi değiştirdiğinizde harita yeniden indirilir.';
+  }
+
   async function syncMap(lat, lon, msg) {
-    const radius = parseInt($('#opt-map').value, 10) || 0, want = radius > 0;
-    try { localStorage.setItem('mapKm', String(radius)); } catch (_) { /* optional */ }
+    const label = parseInt($('#opt-map').value, 10) || 0, radius = mapRadiusFor(label), want = radius > 0;
+    try { localStorage.setItem('mapRange', String(label)); } catch (_) { /* optional */ }
     const dev = state.device || {};
     if (dev.map === undefined) return want ? ' Harita için önce 3. adımdan yazılımı güncelleyin.' : '';
     if (!want) {
@@ -948,7 +962,7 @@
       if (!blob) return ' Bu konumda çizilecek kıyı ya da ana yol bulunamadı, harita eklenmedi.';
       await uploadMap(blob, (p) => setMsg(msg, 'info', 'Harita cihaza yazılıyor… %' + p));
       dev.map = blob.length;
-      return ' Harita da yüklendi (' + radius + ' km, ' + Math.round(blob.length / 1024) + ' KB).' +
+      return ' Harita da yüklendi (' + label + ' km menzile kadar, ' + Math.round(blob.length / 1024) + ' KB).' +
         (water ? '' : ' Deniz dolgusu için önce 3. adımdan yazılımı güncelleyin.');
     } catch (e) {
       const m = e && e.message ? e.message : '';
@@ -1052,6 +1066,8 @@
     $('#btn-reset').addEventListener('click', resetDevice);
     $('#settings').addEventListener('submit', save);
     $('#tz').addEventListener('change', showPosix);
+    $('#opt-map').addEventListener('change', updateMapNote);
+    updateMapNote();
     $('#lat').addEventListener('input', updateMapLink);
     $('#lon').addEventListener('input', updateMapLink);
     $('#btn-showpass').addEventListener('click', (e) => {
