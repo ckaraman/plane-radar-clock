@@ -71,6 +71,7 @@ To flash devices before shipping, write `firmware-merged.bin` at `0x0` (the *Ful
 
 ## Display options
 
+- Aircraft are drawn as a top-down airplane icon (`include/ui/aircraft_icon.h`, filled triangles, rotated to the heading) instead of a plain triangle; the speed vector still starts at the nose.
 - Altitude tags show `1.2K ft` / `35K ft` from 1000 ft up, plain `850 ft` below.
 - *Radar halkalarını ve artı çizgilerini göster* (setup page, `rings` in `PR:SET`): switch it off for a plain map view (aircraft, map, N/E/S/W and the range label stay).
 

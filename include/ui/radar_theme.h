@@ -31,7 +31,7 @@ constexpr float kGridStrokeHalfWidth = 1.0f;
 
 constexpr int kCenterDotRadius = 2;
 
-/** Filled aircraft symbol (nose triangle). */
+/** Aircraft symbol: airplane icon (ui/aircraft_icon.h); the nose tip sits this far ahead of the position. */
 constexpr int kAircraftNoseLenPx = 8;
 constexpr int kAircraftTailLenPx = 3;
 constexpr int kAircraftTailHalfPx = 4;

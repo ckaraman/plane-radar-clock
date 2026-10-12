@@ -12,6 +12,7 @@
 #include "hardware/display_font.h"
 #include "services/adsb_client.h"
 #include "services/radar_location.h"
+#include "ui/aircraft_icon.h"
 #include "ui/map_overlay.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
@@ -356,25 +357,7 @@ void noseTip(int cx, int cy, float heading_deg, int* tip_x, int* tip_y) {
 }
 
 void drawHeadingTriangle(int cx, int cy, float heading_deg, uint16_t color) {
-  constexpr float kDegToRad = 0.01745329252f;
-  const float rad = heading_deg * kDegToRad;
-  const float sin_h = sinf(rad);
-  const float cos_h = cosf(rad);
-
-  int tip_x = 0;
-  int tip_y = 0;
-  noseTip(cx, cy, heading_deg, &tip_x, &tip_y);
-
-  const int base_x =
-      cx - static_cast<int>(lroundf(sin_h * static_cast<float>(radar::kAircraftTailLenPx)));
-  const int base_y =
-      cy + static_cast<int>(lroundf(cos_h * static_cast<float>(radar::kAircraftTailLenPx)));
-
-  const int wing_x = static_cast<int>(lroundf(cos_h * radar::kAircraftTailHalfPx));
-  const int wing_y = static_cast<int>(lroundf(sin_h * radar::kAircraftTailHalfPx));
-
-  s_draw->fillTriangle(tip_x, tip_y, base_x + wing_x, base_y + wing_y,
-                       base_x - wing_x, base_y - wing_y, color);
+  radar::drawAircraftIcon(*s_draw, cx, cy, heading_deg, color);
 }
 
 void drawSpeedVector(int cx, int cy, float heading_deg, float track_deg,

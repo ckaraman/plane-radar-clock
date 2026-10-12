@@ -8,7 +8,7 @@ namespace config {
 
 /** Shown on the web setup page; the build copies it into the update manifest.
  *  Bump it for every release you publish. Keep this declaration on a single line. */
-constexpr char kFirmwareVersion[] = "1.5.0";
+constexpr char kFirmwareVersion[] = "1.5.1";
 
 // --- USB setup page address shown on the setup screen ---
 // CI writes include/setup_url.h with the GitHub Pages address of this repository
