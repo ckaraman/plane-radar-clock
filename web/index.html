@@ -707,7 +707,7 @@
       if (el.type !== 'way' || !Array.isArray(el.geometry)) continue;
       const type = el.tags && el.tags.natural === 'coastline' ? 0 : 1;
       let cur = [];
-      const flush = () => { if (cur.length >= 2) runs.push({ type, pts: cur }); cur = []; };
+      const flush = () => { if (cur.length >= 2) runs.push({ type, hw: el.tags && el.tags.highway, pts: cur }); cur = []; };
       for (const g of el.geometry) {
         if (!g) { flush(); continue; }   // point outside the requested box
         const x = (g.lon - lon) * KM_PER_DEG * cosL, y = (g.lat - lat) * KM_PER_DEG;
@@ -716,8 +716,12 @@
       }
       flush();
     }
-    let tol = 0.03, built = null;
-    for (let iter = 0; iter < 14; iter++) {
+    // Fit into the device budget: first simplify harder, then drop the least important lines.
+    const prio = (r) => r.type === 0 ? 0 : (r.hw === 'motorway' || r.hw === 'trunk' ? 1 : 2);
+    const minRoad = 0.4; let tol = 0.03, last = [];
+    const fits = (n, pts) => pts <= MAP_MAX_POINTS && 14 + n * 3 + pts * 4 <= MAP_MAX_BYTES && n < 65535;
+    let built = null;
+    for (let iter = 0; iter < 7 && !built; iter++) {
       const lines = [];
       let points = 0;
       for (const r of runs) {
@@ -725,14 +729,22 @@
         if (s.length < 2) continue;
         let len = 0;
         for (let i = 1; i < s.length; i++) len += Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1]);
-        if (len < (r.type === 0 ? 0.15 : 0.4)) continue;      // tiny fragments are only noise at this size
-        lines.push({ type: r.type, pts: s }); points += s.length;
+        if (len < (r.type === 0 ? 0.15 : minRoad)) continue;   // tiny fragments are only noise at this size
+        lines.push({ type: r.type, p: prio(r), len, pts: s }); points += s.length;
       }
-      const bytes = 14 + lines.length * 3 + points * 4;
-      if (points <= MAP_MAX_POINTS && bytes <= MAP_MAX_BYTES && lines.length < 65535) { built = { lines, points, bytes }; break; }
+      last = lines;
+      if (fits(lines.length, points)) built = { lines, points, bytes: 14 + lines.length * 3 + points * 4 };
       tol *= 1.4;
     }
-    if (!built) throw new Error('too-big');
+    if (!built) {                                              // still too much: keep the most important/longest lines
+      const sorted = last.slice().sort((a, b) => a.p - b.p || b.len - a.len);
+      const lines = []; let points = 0;
+      for (const l of sorted) {
+        if (!fits(lines.length + 1, points + l.pts.length)) continue;
+        lines.push(l); points += l.pts.length;
+      }
+      built = { lines, points, bytes: 14 + lines.length * 3 + points * 4 };
+    }
     if (!built.lines.length) return null;                     // nothing to draw here
     const buf = new ArrayBuffer(built.bytes), dv = new DataView(buf);
     dv.setUint8(0, 0x50); dv.setUint8(1, 0x4D); dv.setUint8(2, 1); dv.setUint8(3, 0);
