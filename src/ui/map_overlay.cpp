@@ -21,7 +21,7 @@ constexpr float kDegToRad = 0.01745329252f;
 // sea is a clearly lighter tone than the land (which stays the radar background).
 constexpr uint8_t kWaterR = 14, kWaterG = 44, kWaterB = 88;
 constexpr uint8_t kCoastR = 70, kCoastG = 140, kCoastB = 220;
-constexpr uint8_t kRoadR = 96, kRoadG = 96, kRoadB = 100;  // soft grey
+constexpr uint8_t kRoadR = 225, kRoadG = 120, kRoadB = 20;  // orange
 
 constexpr int kMaskStride = (radar::kSize + 7) / 8;
 constexpr size_t kMaskBytes = static_cast<size_t>(kMaskStride) * radar::kSize;
