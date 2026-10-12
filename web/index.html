@@ -173,7 +173,7 @@
       <label for="opt-map">Radarın arkasına harita (deniz, kıyı çizgisi, otoyol ve devlet yolları)</label>
       <select id="opt-map">
         <option value="17">17 km menzile kadar — ekran kenarı 22,7 km (en geniş haritalı menzil)</option>
-        <option value="15">15 km menzile kadar — ekran kenarı 20 km</option>
+        <option value="15" selected>15 km menzile kadar — ekran kenarı 20 km (varsayılan)</option>
         <option value="10">10 km menzile kadar — ekran kenarı 13,3 km</option>
         <option value="5">5 km menzile kadar — ekran kenarı 6,7 km</option>
         <option value="0">Haritasız (harita verisi indirilmez)</option>
@@ -658,7 +658,10 @@
   const MAP_RANGES = { 5: 5 * 4 / 3, 10: 10 * 4 / 3, 15: 15 * 4 / 3, 17: 17 * 4 / 3 };
   const mapRadiusFor = (label) => MAP_RANGES[label] ? Math.ceil(MAP_RANGES[label] * 1.13 * 10) / 10 : 0;
   const MAP_MAX_KM = 26, MAP_MAX_POINTS = 3000, MAP_MAX_RING_POINTS = 2500, MAP_MAX_BYTES = 31000, KM_PER_DEG = 111;
-  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  // Public Overpass servers are often busy or rate-limited, so several mirrors are tried in rounds.
+  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter',
+                    'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  const overpassCache = new Map();       // survives retries on the same page (same place and size)
 
   function crc32(bytes) {
     let table = crc32.table;
@@ -671,27 +674,41 @@
     return (crc ^ 0xFFFFFFFF) >>> 0;
   }
 
-  async function fetchOverpass(lat, lon, radiusKm) {
+  async function fetchOverpass(lat, lon, radiusKm, onStatus) {
+    const key = lat.toFixed(4) + ',' + lon.toFixed(4) + ',' + radiusKm;
+    if (overpassCache.has(key)) return overpassCache.get(key);
     const fetchKm = radiusKm * 1.25;               // a little wider than the circle so its edge is cut exactly
     const dLat = fetchKm / KM_PER_DEG, dLon = fetchKm / (KM_PER_DEG * Math.cos(lat * Math.PI / 180));
     const bbox = [lat - dLat, lon - dLon, lat + dLat, lon + dLon].map((v) => v.toFixed(5)).join(',');
-    const q = '[out:json][timeout:40];(way["natural"="coastline"](' + bbox + ');' +
+    const q = '[out:json][timeout:25];(way["natural"="coastline"](' + bbox + ');' +
       'way["highway"~"^(motorway|trunk)$"](' + bbox + '););out geom(' + bbox + ');';
-    let lastErr = null;
-    for (const url of OVERPASS) {
-      try {
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), 45000);
-        const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
-                                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-        clearTimeout(t);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const j = await r.json();
-        if (!j || !Array.isArray(j.elements)) throw new Error('bad response');
-        return j.elements;
-      } catch (e) { lastErr = e; }
+    const reasons = [];
+    for (let round = 0; round < 3; round++) {
+      for (const url of OVERPASS) {
+        const host = new URL(url).hostname;
+        if (onStatus) onStatus('Harita sunucusuna bağlanılıyor (' + host + ', deneme ' + (round * OVERPASS.length + OVERPASS.indexOf(url) + 1) + ')…');
+        try {
+          const ctl = new AbortController();
+          const t = setTimeout(() => ctl.abort(), 30000);
+          let r;
+          try {
+            r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
+                                   headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+            if (!r.ok) throw new Error(r.status === 429 ? 'sunucu meşgul (429)' : 'HTTP ' + r.status);
+            const j = JSON.parse(await r.text());                // an HTML error page throws here
+            if (!j || !Array.isArray(j.elements)) throw new Error('geçersiz yanıt');
+            if (j.remark && /runtime error|timed out|out of memory/i.test(j.remark)) throw new Error('sunucu meşgul');
+            overpassCache.set(key, j.elements);
+            return j.elements;
+          } finally { clearTimeout(t); }
+        } catch (e) {
+          reasons.push(host + ': ' + (e && e.name === 'AbortError' ? 'zaman aşımı' : (e && e.message) || 'bağlanılamadı'));
+        }
+      }
+      if (round < 2) await sleep(2000 * (round + 1));
     }
-    throw lastErr || new Error('network');
+    const err = new Error('network'); err.reasons = reasons;
+    throw err;
   }
 
   function simplify(pts, tol) {          // Douglas-Peucker, iterative
@@ -956,7 +973,7 @@
     }
     try {
       setMsg(msg, 'info', 'Harita indiriliyor… (birkaç saniye sürebilir)');
-      const elements = await fetchOverpass(lat, lon, radius);
+      const elements = await fetchOverpass(lat, lon, radius, (t) => setMsg(msg, 'info', t));
       const water = (dev.mapv || 1) >= 2;
       const blob = buildMapBlob(elements, lat, lon, water, radius);
       if (!blob) return ' Bu konumda çizilecek kıyı ya da ana yol bulunamadı, harita eklenmedi.';
@@ -966,7 +983,8 @@
         (water ? '' : ' Deniz dolgusu için önce 3. adımdan yazılımı güncelleyin.');
     } catch (e) {
       const m = e && e.message ? e.message : '';
-      return ' Harita eklenemedi (' + (ERRORS[m] || (m === 'too-big' ? 'çok ayrıntılı' : 'internetten indirilemedi')) + '); diğer ayarlar kaydedildi. Daha sonra tekrar deneyebilirsiniz.';
+      const why = ERRORS[m] || (m === 'too-big' ? 'çok ayrıntılı' : 'harita sunucuları şu an yanıt vermiyor' + (e && e.reasons ? ' — ' + e.reasons.slice(-2).join('; ') : ''));
+      return ' Harita eklenemedi (' + why + '); diğer ayarlar kaydedildi. Birkaç dakika sonra tekrar "Cihaza kaydet" deyin; harita sunucuları yoğun olabiliyor.';
     }
   }
 
