@@ -12,7 +12,8 @@ namespace ui::radar {
  *   5 km  — pattern / very local (airfield vicinity)
  *  10 km  — default; neighborhood spotting
  *  15 km  — wider local area
- *  25 km  — metro / regional picture
+ *  17 km  — metro / regional picture (outer edge ~22.7 km; ADS-B fetch radius ~25 km)
+ *  25 km  — widest (outer edge ~33 km); the map layer is not drawn at this range
  *
  * Outer radius (for aircraft math) is ring-3 distance ÷ 0.75.
  */
@@ -28,8 +29,12 @@ constexpr RangePreset kRangePresets[] = {
     {5.0f, 5.0f * kRing3ToOuterKm},
     {10.0f, 10.0f * kRing3ToOuterKm},
     {15.0f, 15.0f * kRing3ToOuterKm},
+    {17.0f, 17.0f * kRing3ToOuterKm},
     {25.0f, 25.0f * kRing3ToOuterKm},
 };
+
+/** Largest outer radius (km) at which the map layer is still drawn. */
+constexpr float kMapMaxOuterKm = 25.0f;
 
 constexpr size_t kRangePresetCount =
     sizeof(kRangePresets) / sizeof(kRangePresets[0]);

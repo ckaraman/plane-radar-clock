@@ -173,6 +173,10 @@ void draw(lgfx::LGFXBase& gfx) {
     return;
   }
 
+  if (radar::rangeCurrent().outer_km > radar::kMapMaxOuterKm) {
+    return;  // widest range: no map, the stored data only covers up to 25 km
+  }
+
   const float map_lat = static_cast<float>(rdI32(blob + 4)) * 1e-7f;
   const float map_lon = static_cast<float>(rdI32(blob + 8)) * 1e-7f;
   const uint16_t count = rdU16(blob + 12);

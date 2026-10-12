@@ -168,9 +168,17 @@
         <label><input type="checkbox" id="opt-clock" checked> Gökyüzünde uçak yokken saati göster</label>
         <label><input type="checkbox" id="opt-miles"> Mesafeleri mil olarak göster</label>
         <label><input type="checkbox" id="opt-runways" checked> Havalimanı pistlerini göster</label>
-        <label><input type="checkbox" id="opt-map" checked> Radarın arkasına harita çiz (deniz, kıyı çizgisi ve ana yollar)</label>
       </div>
-      <small id="map-note">Harita, seçtiğiniz konumun yaklaşık 36 km çevresi (deniz, kıyı, otoyol ve devlet yolları) için internetten indirilip cihaza yazılır; konumu değiştirdiğinizde yeniden indirilir.</small>
+
+      <label for="opt-map">Radarın arkasına harita (deniz, kıyı, otoyol ve devlet yolları)</label>
+      <select id="opt-map">
+        <option value="25">Haritayı 25 km çapında çiz (en geniş)</option>
+        <option value="20">Haritayı 20 km çapında çiz</option>
+        <option value="15">Haritayı 15 km çapında çiz</option>
+        <option value="10">Haritayı 10 km çapında çiz</option>
+        <option value="0">Haritasız (harita verisi indirilmez)</option>
+      </select>
+      <small id="map-note">Cihazdaki en geniş menzil (ekranda 25 km, kenarı yaklaşık 33 km) haritasız çalışır: o menzile geçince harita gösterilmez, yalnızca radar görünür. Diğer menzillerde (en çok yaklaşık 23 km) harita çizilir. Harita, seçtiğiniz konumun etrafında seçtiğiniz km kadar internetten indirilip cihaza yazılır; küçük seçmek daha az veri indirir. "Haritasız" seçerseniz hiçbir harita verisi indirilmez ve cihazdaki eski harita silinir. Konumu ya da menzili değiştirdiğinizde yeniden indirilir.</small>
 
       <div class="row" style="margin-top:18px">
         <button type="submit" class="btn primary" id="btn-save">Cihaza kaydet</button>
@@ -533,7 +541,8 @@
     $('#opt-miles').checked = !!d.miles;
     $('#opt-runways').checked = !!d.runways;
     $('#opt-map').disabled = d.map === undefined;      // old firmware: no map support
-    if (d.map === undefined) $('#opt-map').checked = false;
+    if (d.map === undefined) $('#opt-map').value = '0';
+    else { try { const v = localStorage.getItem('mapKm'); if (v && [...$('#opt-map').options].some((o) => o.value === v)) $('#opt-map').value = v; } catch (_) { /* optional */ } }
     $('#ssid').value = d.wifi ? d.ssid : '';
     $('#pass').value = '';
     updateMapLink();
@@ -642,7 +651,7 @@
   // ------------------------------------------------------------------ map
   // Coast lines and main roads around the chosen location, from OpenStreetMap.
   // Binary format and limits: include/services/map_store.h in the firmware.
-  const MAP_RADIUS_KM = 36, MAP_FETCH_KM = 45, MAP_MAX_POINTS = 3000, MAP_MAX_RING_POINTS = 2500, MAP_MAX_BYTES = 31000, KM_PER_DEG = 111;
+  const MAP_MAX_KM = 25, MAP_MAX_POINTS = 3000, MAP_MAX_RING_POINTS = 2500, MAP_MAX_BYTES = 31000, KM_PER_DEG = 111;
   const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
   function crc32(bytes) {
@@ -656,8 +665,9 @@
     return (crc ^ 0xFFFFFFFF) >>> 0;
   }
 
-  async function fetchOverpass(lat, lon) {
-    const dLat = MAP_FETCH_KM / KM_PER_DEG, dLon = MAP_FETCH_KM / (KM_PER_DEG * Math.cos(lat * Math.PI / 180));
+  async function fetchOverpass(lat, lon, radiusKm) {
+    const fetchKm = radiusKm * 1.25;               // a little wider than the circle so its edge is cut exactly
+    const dLat = fetchKm / KM_PER_DEG, dLon = fetchKm / (KM_PER_DEG * Math.cos(lat * Math.PI / 180));
     const bbox = [lat - dLat, lon - dLon, lat + dLat, lon + dLon].map((v) => v.toFixed(5)).join(',');
     const q = '[out:json][timeout:40];(way["natural"="coastline"](' + bbox + ');' +
       'way["highway"~"^(motorway|trunk)$"](' + bbox + '););out geom(' + bbox + ');';
@@ -804,8 +814,8 @@
     return rings;
   }
 
-  function buildMapBlob(elements, lat, lon, withWater) {
-    const cosL = Math.cos(lat * Math.PI / 180), R = MAP_RADIUS_KM;
+  function buildMapBlob(elements, lat, lon, withWater, radiusKm) {
+    const cosL = Math.cos(lat * Math.PI / 180), R = Math.min(radiusKm, MAP_MAX_KM);
     const roads = [];                    // {type:1, pts}
     const coastParts = [];               // raw ways split at points outside the downloaded box
     for (const el of elements) {
@@ -922,7 +932,8 @@
 
   // Returns a short note for the save message ('' when the map step was skipped).
   async function syncMap(lat, lon, msg) {
-    const want = $('#opt-map').checked;
+    const radius = parseInt($('#opt-map').value, 10) || 0, want = radius > 0;
+    try { localStorage.setItem('mapKm', String(radius)); } catch (_) { /* optional */ }
     const dev = state.device || {};
     if (dev.map === undefined) return want ? ' Harita için önce 3. adımdan yazılımı güncelleyin.' : '';
     if (!want) {
@@ -931,13 +942,13 @@
     }
     try {
       setMsg(msg, 'info', 'Harita indiriliyor… (birkaç saniye sürebilir)');
-      const elements = await fetchOverpass(lat, lon);
+      const elements = await fetchOverpass(lat, lon, radius);
       const water = (dev.mapv || 1) >= 2;
-      const blob = buildMapBlob(elements, lat, lon, water);
+      const blob = buildMapBlob(elements, lat, lon, water, radius);
       if (!blob) return ' Bu konumda çizilecek kıyı ya da ana yol bulunamadı, harita eklenmedi.';
       await uploadMap(blob, (p) => setMsg(msg, 'info', 'Harita cihaza yazılıyor… %' + p));
       dev.map = blob.length;
-      return ' Harita da yüklendi (' + Math.round(blob.length / 1024) + ' KB).' +
+      return ' Harita da yüklendi (' + radius + ' km, ' + Math.round(blob.length / 1024) + ' KB).' +
         (water ? '' : ' Deniz dolgusu için önce 3. adımdan yazılımı güncelleyin.');
     } catch (e) {
       const m = e && e.message ? e.message : '';

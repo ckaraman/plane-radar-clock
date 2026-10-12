@@ -17,7 +17,7 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 
 | Action | Effect |
 |--------|--------|
-| **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash |
+| **Short tap** | Cycle range preset (5 → 10 → 15 → 17 → 25 km; the map layer is not drawn on the widest 25 km range, outer edge ~33 km); saved to flash |
 | **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
 
 During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
@@ -71,7 +71,7 @@ To flash devices before shipping, write `firmware-merged.bin` at `0x0` (the *Ful
 
 ## Map layer (sea, coast lines and main roads)
 
-The setup page can draw the coast line and main roads (motorway and trunk only) behind the radar. When you press *Cihaza kaydet* with *Radarın arkasına harita çiz* ticked, the page downloads the data for about 36 km around the chosen location from OpenStreetMap (Overpass API), builds sea polygons from the coastline (OSM keeps water on the right of the coastline), simplifies it to at most ~3000 line points plus ~2500 sea points (~15-30 KB) and sends it over USB (`PR:MAPBEGIN` / `PR:MAP` / `PR:MAPEND`, every chunk acknowledged). The device keeps it in the unused `spiffs` partition (raw, no file system) and draws it under the grid (`src/ui/map_overlay.cpp`). The sea is filled with a lighter tone through a cached 1-bit mask (rebuilt only on zoom/map change). Colors are `kWater*` / `kCoast*` / `kRoad*` in that file. Blob version 2 adds type-2 sea rings (even-odd fill); `HELLO` reports `mapv`, and the page only sends sea rings to firmware with `mapv` >= 2. Map data © OpenStreetMap contributors (ODbL). The map is removed by *Ayarları sıfırla* and by the BOOT long press.
+The setup page can draw the coast line and main roads (motorway and trunk only) behind the radar. When you press *Cihaza kaydet* with a map size (10/15/20/25 km, default 25; *Haritasız* = no download) selected, the page downloads the data for that radius around the chosen location from OpenStreetMap (Overpass API), builds sea polygons from the coastline (OSM keeps water on the right of the coastline), simplifies it to at most ~3000 line points plus ~2500 sea points (~15-30 KB) and sends it over USB (`PR:MAPBEGIN` / `PR:MAP` / `PR:MAPEND`, every chunk acknowledged). The device keeps it in the unused `spiffs` partition (raw, no file system) and draws it under the grid (`src/ui/map_overlay.cpp`). The sea is filled with a lighter tone through a cached 1-bit mask (rebuilt only on zoom/map change). Colors are `kWater*` / `kCoast*` / `kRoad*` in that file. Blob version 2 adds type-2 sea rings (even-odd fill); `HELLO` reports `mapv`, and the page only sends sea rings to firmware with `mapv` >= 2. Map data © OpenStreetMap contributors (ODbL). The map is removed by *Ayarları sıfırla* and by the BOOT long press.
 
 ## Radar display
 
@@ -90,7 +90,8 @@ Layout and colors: `include/ui/radar_theme.h`.
 | 5 km / 3 mi | ~6.7 km |
 | 10 km / 6 mi | ~13.3 km (default) |
 | 15 km / 9 mi | ~20 km |
-| 25 km / 16 mi | ~33.3 km |
+| 17 km / 11 mi | ~22.7 km |
+| 25 km / 16 mi | ~33.3 km (no map layer) |
 
 Preset and miles/km choice persist across reboot (`planeradar` NVS namespace).
 
