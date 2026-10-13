@@ -242,16 +242,12 @@ void statusScreenPortal() {
         {host, host_size, &kConnectingGfxDetail},
         {path, path_size, &kConnectingGfxDetail},
         {"(Chrome/Edge, USB)", 0.8f, &kPortalGfxBody},
-        {"or join Wi-Fi:", 0.8f, &kPortalGfxBody},
-        {config::kPortalApName, 0.85f, &kPortalGfxBody},
     };
     const TextLine no_path[] = {
         {"Setup", 1.1f, &kPortalGfxTitle},
         {"Open on a computer:", 0.85f, &kPortalGfxBody},
         {host, host_size, &kConnectingGfxDetail},
         {"(Chrome/Edge, USB)", 0.8f, &kPortalGfxBody},
-        {"or join Wi-Fi:", 0.8f, &kPortalGfxBody},
-        {config::kPortalApName, 0.85f, &kPortalGfxBody},
     };
     if (path[0] != '\0') {
       drawTextBlock(config::kColorYellow, config::kTextOnYellow, with_path,
@@ -263,12 +259,11 @@ void statusScreenPortal() {
     return;
   }
   const TextLine lines[] = {
-      {"Wi-Fi setup", 1.15f, &kPortalGfxTitle},
-      {"1. Join network:", 1.05f, &kPortalGfxBody},
-      {config::kPortalApName, 1.12f, &kPortalGfxEmphasis},
-      {"2. Open in browser:", 1.05f, &kPortalGfxBody},
-      {config::kPortalHostUrl, 1.12f, &kPortalGfxEmphasis},
-      {"or 192.168.4.1", 1.0f, &kPortalGfxBody},
+      {"Setup", 1.15f, &kPortalGfxTitle},
+      {"Plug USB into a", 1.0f, &kPortalGfxBody},
+      {"computer and open", 1.0f, &kPortalGfxBody},
+      {"the setup page", 1.0f, &kPortalGfxBody},
+      {"(Chrome / Edge)", 0.9f, &kPortalGfxBody},
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
                 sizeof(lines) / sizeof(lines[0]));
@@ -277,8 +272,8 @@ void statusScreenPortal() {
 void statusScreenConnectFailed() {
   const TextLine lines[] = {
       {"Could not connect", 1.15f, &kGfxTitle},
-      {"Check Wi-Fi password", 1.0f, &kGfxBody},
-      {"and signal strength.", 1.0f, &kGfxBody},
+      {"Retrying... or fix", 1.0f, &kGfxBody},
+      {"Wi-Fi on setup page", 1.0f, &kGfxBody},
       {"Hold BOOT 3 sec", 1.0f, &kGfxBody},
       {"to reset Wi-Fi", 1.0f, &kGfxBody},
   };

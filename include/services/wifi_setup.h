@@ -3,11 +3,11 @@
 /** True when the next boot should show the setup screen first (after credential reset). */
 bool wifiShowsSetupScreenOnBoot();
 void wifiResetCredentialsAndReboot();
-/** Boot flow: connect with UI, open portal only if saved creds fail. */
+/** Boot flow: connect with UI, if no network is saved, wait for the USB setup page. */
 bool wifiSetupConnect();
-/** Reconnect using saved creds; never opens the captive portal. */
+/** Reconnect using saved creds; never opens any setup portal. */
 bool wifiReconnect();
-/** Keeps the LAN config portal alive; call every loop() iteration. */
+/** Polls the USB setup page; call every loop() iteration. */
 void wifiLoop();
 bool wifiBootButtonPressed();
 /** GPIO + interrupt setup; call once early in setup(). */

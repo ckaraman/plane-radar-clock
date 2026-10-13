@@ -1,7 +1,6 @@
 #include "services/wifi_setup.h"
 
 #include <WiFi.h>
-#include <WiFiManager.h>
 
 #include <cstdio>
 #include <cstring>
@@ -9,10 +8,6 @@
 #include <Preferences.h>
 #include <esp_system.h>
 #include <esp_wifi.h>
-
-#ifdef WM_MDNS
-#include <ESPmDNS.h>
-#endif
 
 #include "config.h"
 #include "services/clock_service.h"
@@ -60,105 +55,17 @@ namespace {
 
 /** Separate from planeradar prefs (rangeInit) to avoid NVS handle conflicts. */
 constexpr char kWifiPrefsNamespace[] = "wifi";
-constexpr char kPrefsForcePortalKey[] = "portal";
+constexpr char kPrefsForcePortalKey[] = "portal";  // "show setup screen after reset"
 
-bool s_force_config_portal = false;
-WiFiManager s_wm;
-bool s_wm_configured = false;
+bool s_show_setup_after_reset = false;
 
-void ensureWifiManager();
-void startLanWebPortal();
-void stopLanWebPortal();
-bool wifiLinkUp();
-
-constexpr int kCoordParamLen = 20;
-constexpr char kCoordInputAttrs[] =
-    " type=\"number\" step=\"0.000001\"";
-
-WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
-                                kCoordParamLen, kCoordInputAttrs);
-WiFiManagerParameter s_param_lon("radar_lon", "Longitude (deg)", "0",
-                                kCoordParamLen, kCoordInputAttrs);
-
-char s_miles_checkbox_attrs[32] = "type=\"checkbox\"";
-WiFiManagerParameter s_param_miles("use_miles", "Display distances in miles", "T", 2,
-                                   s_miles_checkbox_attrs, WFM_LABEL_AFTER);
-
-char s_runways_checkbox_attrs[32] = "type=\"checkbox\"";
-WiFiManagerParameter s_param_runways("show_runways", "Show airport runways", "T", 2,
-                                     s_runways_checkbox_attrs, WFM_LABEL_AFTER);
-
-// --- Idle clock: common timezones (picker fills the text field below) ---
-// Text field holds a POSIX TZ string; the <select> is just a convenience that
-// copies its value into that field, so any other zone can still be typed in.
-constexpr int kTzParamLen = 47;
-WiFiManagerParameter s_param_tz_picker(
-    "<br/><label for='tzpick'>Time zone</label><br/>"
-    "<select id='tzpick' "
-    "onchange=\"document.getElementById('clock_tz').value=this.value\">"
-    "<option value=''>Pick a zone...</option>"
-    "<option value='&lt;+03&gt;-3'>Istanbul (UTC+3)</option>"
-    "<option value='GMT0BST,M3.5.0/1,M10.5.0'>London</option>"
-    "<option value='CET-1CEST,M3.5.0,M10.5.0/3'>Berlin / Paris / Amsterdam / Rome</option>"
-    "<option value='EET-2EEST,M3.5.0/3,M10.5.0/4'>Athens / Helsinki / Kyiv</option>"
-    "<option value='&lt;+04&gt;-4'>Dubai</option>"
-    "<option value='EST5EDT,M3.2.0,M11.1.0'>New York</option>"
-    "<option value='CST6CDT,M3.2.0,M11.1.0'>Chicago</option>"
-    "<option value='PST8PDT,M3.2.0,M11.1.0'>Los Angeles</option>"
-    "<option value='UTC0'>UTC</option>"
-    "</select>");
-WiFiManagerParameter s_param_tz("clock_tz", "Time zone (POSIX TZ string)", "",
-                                kTzParamLen);
-
-char s_clock_checkbox_attrs[32] = "type=\"checkbox\"";
-WiFiManagerParameter s_param_clock("show_clock", "Show clock when no aircraft", "T", 2,
-                                   s_clock_checkbox_attrs, WFM_LABEL_AFTER);
-
-void refreshPortalParamValues() {
-  s_param_tz.setValue(services::clock::timezone(), kTzParamLen);
-  snprintf(s_clock_checkbox_attrs, sizeof(s_clock_checkbox_attrs),
-           "type=\"checkbox\"%s", services::clock::enabled() ? " checked" : "");
-  s_param_clock.setValue("T", 2);
-  char lat_buf[kCoordParamLen + 1];
-  char lon_buf[kCoordParamLen + 1];
-  snprintf(lat_buf, sizeof(lat_buf), "%.6f", services::location::lat());
-  snprintf(lon_buf, sizeof(lon_buf), "%.6f", services::location::lon());
-  s_param_lat.setValue(lat_buf, kCoordParamLen);
-  s_param_lon.setValue(lon_buf, kCoordParamLen);
-  snprintf(s_miles_checkbox_attrs, sizeof(s_miles_checkbox_attrs), "type=\"checkbox\"%s",
-           ui::radar::useMiles() ? " checked" : "");
-  s_param_miles.setValue("T", 2);
-  snprintf(s_runways_checkbox_attrs, sizeof(s_runways_checkbox_attrs),
-           "type=\"checkbox\"%s", ui::radar::showRunways() ? " checked" : "");
-  s_param_runways.setValue("T", 2);
+bool wifiLinkUp() {
+  return WiFi.status() == WL_CONNECTED &&
+         WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
-void onPortalParamsSaved() {
-  if (!services::location::saveFromStrings(s_param_lat.getValue(),
-                                           s_param_lon.getValue())) {
-    Serial.println("Invalid lat/lon in portal — keeping previous location");
-  }
-  ui::radar::saveMilesFromPortal(s_param_miles.getValue());
-  ui::radar::saveRunwaysFromPortal(s_param_runways.getValue());
-  services::clock::saveFromPortal(s_param_tz.getValue(), s_param_clock.getValue());
-
-  refreshPortalParamValues();
-}
-
-void attachPortalParams(WiFiManager& wm) {
-  refreshPortalParamValues();
-  wm.addParameter(&s_param_lat);
-  wm.addParameter(&s_param_lon);
-  wm.addParameter(&s_param_miles);
-  wm.addParameter(&s_param_runways);
-  wm.addParameter(&s_param_tz_picker);
-  wm.addParameter(&s_param_tz);
-  wm.addParameter(&s_param_clock);
-  wm.setSaveParamsCallback(onPortalParamsSaved);
-}
-
-void markForceConfigPortal() {
-  s_force_config_portal = true;
+void markShowSetupScreen() {
+  s_show_setup_after_reset = true;
   Preferences prefs;
   if (!prefs.begin(kWifiPrefsNamespace, false)) {
     return;
@@ -167,32 +74,13 @@ void markForceConfigPortal() {
   prefs.end();
 }
 
-bool consumeForceConfigPortal() {
-  if (s_force_config_portal) {
-    s_force_config_portal = false;
-    Preferences prefs;
-    if (prefs.begin(kWifiPrefsNamespace, false)) {
-      prefs.remove(kPrefsForcePortalKey);
-      prefs.end();
-    }
-    return true;
-  }
-
+void clearShowSetupScreen() {
+  s_show_setup_after_reset = false;
   Preferences prefs;
-  if (!prefs.begin(kWifiPrefsNamespace, true)) {
-    return false;
-  }
-  const bool pending = prefs.getBool(kPrefsForcePortalKey, false);
-  prefs.end();
-  if (!pending) {
-    return false;
-  }
-
   if (prefs.begin(kWifiPrefsNamespace, false)) {
     prefs.remove(kPrefsForcePortalKey);
     prefs.end();
   }
-  return true;
 }
 
 bool storedWifiCredentials() {
@@ -210,93 +98,24 @@ bool storedWifiCredentials() {
 }
 
 void eraseWifiCredentials() {
-  stopLanWebPortal();
   WiFi.setAutoReconnect(false);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
-
-  ensureWifiManager();
+  WiFi.mode(WIFI_STA);
+  delay(50);
   WiFi.persistent(true);
-  s_wm.resetSettings();
-  s_wm.erase();
-  WiFi.disconnect(true, true);
+  WiFi.disconnect(true, true);  // drop the link and erase the saved network
   WiFi.persistent(false);
-
   WiFi.mode(WIFI_OFF);
   delay(100);
 }
 
 void resetWifiCredentials() {
-  markForceConfigPortal();
+  markShowSetupScreen();
   eraseWifiCredentials();
   services::location::clear();
   services::clock::clear();
   services::map::clear();
   ui::radar::unitsReset();
   Serial.println("WiFi credentials, location, and units cleared");
-}
-
-void onConfigPortalApStarted(WiFiManager*) {
-  WiFi.setTxPower(WIFI_POWER_8_5dBm);
-  statusScreenPortal();
-#ifdef WM_MDNS
-  if (MDNS.begin(config::kPortalHostname)) {
-    MDNS.addService("http", "tcp", 80);
-    Serial.printf("Setup portal: http://%s.local (or http://%s)\n",
-                  config::kPortalHostname, config::kPortalIp);
-  } else {
-    Serial.printf("Setup portal: http://%s (mDNS unavailable)\n", config::kPortalIp);
-  }
-#else
-  Serial.printf("Setup portal: http://%s\n", config::kPortalIp);
-#endif
-}
-
-bool wifiLinkUp() {
-  return WiFi.status() == WL_CONNECTED &&
-         WiFi.localIP() != IPAddress(0, 0, 0, 0);
-}
-
-void ensureWifiManager() {
-  if (s_wm_configured) {
-    return;
-  }
-  s_wm.setConfigPortalTimeout(config::kWifiPortalTimeoutSec);
-  s_wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
-                           IPAddress(255, 255, 255, 0));
-  s_wm.setHostname(config::kPortalHostname);
-  s_wm.setAPCallback(onConfigPortalApStarted);
-  attachPortalParams(s_wm);
-  s_wm_configured = true;
-}
-
-void startLanWebPortal() {
-  if (!wifiLinkUp() || s_wm.getWebPortalActive() ||
-      s_wm.getConfigPortalActive()) {
-    return;
-  }
-  refreshPortalParamValues();
-  WiFi.mode(WIFI_STA);
-  s_wm.setConfigPortalBlocking(false);
-#ifdef WM_MDNS
-  MDNS.end();
-  if (MDNS.begin(config::kPortalHostname)) {
-    MDNS.addService("http", "tcp", 80);
-  }
-#endif
-  s_wm.startWebPortal();
-  Serial.printf("LAN config: http://%s.local or http://%s\n",
-                config::kPortalHostname, WiFi.localIP().toString().c_str());
-}
-
-void stopLanWebPortal() {
-  if (!s_wm.getWebPortalActive()) {
-    return;
-  }
-  s_wm.stopWebPortal();
-#ifdef WM_MDNS
-  MDNS.end();
-#endif
 }
 
 void prepareSta() {
@@ -315,7 +134,7 @@ void startStaConnect(const String& ssid, const String& pass) {
   }
 }
 
-bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
+bool waitForLinkWithUi(unsigned long attempt_ms) {
   const unsigned long deadline = millis() + attempt_ms;
   while (millis() < deadline) {
     if (wifiLinkUp()) {
@@ -350,7 +169,7 @@ bool tryConnectWithUi(const String& ssid, const String& pass, bool show_ui) {
 
     startStaConnect(ssid, pass);
 
-    if (waitForLinkWithUi(ui_ssid, config::kWifiConnectAttemptMs)) {
+    if (waitForLinkWithUi(config::kWifiConnectAttemptMs)) {
       return true;
     }
   }
@@ -391,29 +210,29 @@ bool connectSavedNetwork(bool show_ui) {
   return tryConnectWithUi(ssid, pass, show_ui);
 }
 
-bool openConfigPortal() {
-  stopLanWebPortal();
-  WiFi.disconnect(true);
+/** No saved network: show the USB setup screen and wait. The USB setup page
+ *  saves the settings and reboots the device, so this normally never returns. */
+bool waitForUsbSetup() {
   WiFi.mode(WIFI_OFF);
-  delay(50);
   statusScreenPortal();
-  s_wm.setConfigPortalBlocking(false);
-  s_wm.startConfigPortal(config::kPortalApName);
-  while (s_wm.getConfigPortalActive()) {
+  Serial.println("No saved WiFi — waiting for the USB setup page");
+  while (!wifiLinkUp()) {
     bootButtonPollLongPress();
-    services::serial_setup::poll();  // USB setup page can finish the job too
-    if (s_wm.process()) {
-      return true;
-    }
+    services::serial_setup::poll();
     delay(10);
   }
-  return wifiLinkUp();
+  return true;
+}
+
+void logConnected() {
+  Serial.printf("Connected: %s  IP %s\n", WiFi.SSID().c_str(),
+                WiFi.localIP().toString().c_str());
 }
 
 }  // namespace
 
 bool wifiShowsSetupScreenOnBoot() {
-  if (s_force_config_portal) {
+  if (s_show_setup_after_reset) {
     return true;
   }
   Preferences prefs;
@@ -479,77 +298,41 @@ bool wifiReconnect() {
 }
 
 void wifiLoop() {
+  // Setup is USB-only: nothing listens on the network.
   services::serial_setup::poll();
-  ensureWifiManager();
-  if (wifiLinkUp()) {
-    if (!s_wm.getWebPortalActive() && !s_wm.getConfigPortalActive()) {
-      startLanWebPortal();
-    }
-    if (s_wm.getWebPortalActive() || s_wm.getConfigPortalActive()) {
-      bootButtonPollLongPress();
-      s_wm.process();
-    }
-  } else {
-    stopLanWebPortal();
-  }
 }
 
 bool wifiSetupConnect() {
   initBootButton();
-  ensureWifiManager();
-
-  const bool force_portal = consumeForceConfigPortal();
   WiFi.setAutoReconnect(false);
 
-  if (force_portal) {
+  // A fresh start after a BOOT-button reset: make sure no old network remains.
+  if (s_show_setup_after_reset || wifiShowsSetupScreenOnBoot()) {
+    clearShowSetupScreen();
     eraseWifiCredentials();
-    WiFi.mode(WIFI_OFF);
-    delay(100);
   }
-
-  if (force_portal) {
-    Serial.println("Opening WiFi setup portal (after reset)");
-    if (openConfigPortal() && wifiLinkUp()) {
-      WiFi.setAutoReconnect(true);
-      Serial.printf("Connected: %s  IP %s\n", WiFi.SSID().c_str(),
-                    WiFi.localIP().toString().c_str());
-      return true;
-    }
-    Serial.println("WiFi connection failed");
-    statusScreenConnectFailed();
-    return false;
-  }
-
-  Serial.println("Connecting to WiFi (portal opens if needed)...");
 
   if (wifiLinkUp()) {
     WiFi.setAutoReconnect(true);
-    Serial.printf("Connected: %s  IP %s\n", WiFi.SSID().c_str(),
-                  WiFi.localIP().toString().c_str());
+    logConnected();
     return true;
   }
 
-  if (storedWifiCredentials() && connectSavedNetwork(true)) {
+  if (!storedWifiCredentials()) {
+    waitForUsbSetup();
     WiFi.setAutoReconnect(true);
-    Serial.printf("Connected: %s  IP %s\n", WiFi.SSID().c_str(),
-                  WiFi.localIP().toString().c_str());
+    logConnected();
     return true;
   }
 
-  if (storedWifiCredentials()) {
-    Serial.println("Saved WiFi could not connect — opening setup portal");
-  } else {
-    Serial.println("No saved WiFi — opening setup portal");
-  }
-
-  if (openConfigPortal() && wifiLinkUp()) {
+  Serial.println("Connecting to saved WiFi...");
+  if (connectSavedNetwork(true)) {
     WiFi.setAutoReconnect(true);
-    Serial.printf("Connected: %s  IP %s\n", WiFi.SSID().c_str(),
-                  WiFi.localIP().toString().c_str());
+    logConnected();
     return true;
   }
 
-  Serial.println("WiFi connection failed");
+  Serial.println("WiFi connection failed (will keep retrying)");
   statusScreenConnectFailed();
   return false;
 }

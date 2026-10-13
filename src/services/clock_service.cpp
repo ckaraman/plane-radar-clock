@@ -35,7 +35,7 @@ bool checkboxChecked(const char* value) {
   if (value == nullptr || value[0] == '\0') {
     return false;
   }
-  // WiFiManager submits the checkbox's value= attribute ("T") when ticked.
+  // Setup form sends the checkbox's value= attribute ("T") when ticked.
   return (value[0] == 'T' || value[0] == 't') && value[1] == '\0';
 }
 

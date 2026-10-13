@@ -61,7 +61,7 @@ bool portalCheckboxChecked(const char* value) {
   if (value == nullptr || value[0] == '\0') {
     return false;
   }
-  // WiFiManager checkbox submits its value= attribute ("T", or "F" if we prefilled F).
+  // Setup form checkbox sends its value= attribute ("T", or "F" if we prefilled F).
   if ((value[0] == 'T' || value[0] == 't' || value[0] == 'F' || value[0] == 'f') &&
       value[1] == '\0') {
     return true;

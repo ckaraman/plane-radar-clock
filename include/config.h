@@ -8,7 +8,7 @@ namespace config {
 
 /** Shown on the web setup page; the build copies it into the update manifest.
  *  Bump it for every release you publish. Keep this declaration on a single line. */
-constexpr char kFirmwareVersion[] = "1.5.1";
+constexpr char kFirmwareVersion[] = "1.6.0";
 
 // --- USB setup page address shown on the setup screen ---
 // CI writes include/setup_url.h with the GitHub Pages address of this repository
@@ -24,19 +24,11 @@ constexpr char kSetupPageUrl[] = SETUP_PAGE_URL;
 constexpr char kSetupPageUrl[] = "";
 #endif
 
-// --- Wi-Fi portal ---
-constexpr char kPortalApName[] = "PlaneRadar-Setup";
-constexpr char kPortalIp[] = "192.168.4.1";
-/** mDNS host (no ".local" suffix); browser: http://plane-radar.local */
-constexpr char kPortalHostname[] = "plane-radar";
-constexpr char kPortalHostUrl[] = "plane-radar.local";
-
 /** Per-attempt STA connect wait (ms); retried kWifiConnectAttempts times. */
 constexpr unsigned long kWifiConnectAttemptMs = 15000;
 constexpr uint8_t kWifiConnectAttempts = 3;
-constexpr unsigned long kWifiPortalTimeoutSec = 0;  // 0 = no timeout while configuring
 constexpr unsigned long kWifiConnectingFrameMs = 50;
-/** Wait after disconnect before reconnecting (avoids portal on brief drops). */
+/** Wait after disconnect before reconnecting (avoids reconnect storms on brief drops). */
 constexpr unsigned long kWifiDownGraceMs = 4000;
 /** Minimum interval between background reconnect tries. */
 constexpr unsigned long kWifiReconnectIntervalMs = 15000;

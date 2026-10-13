@@ -4,11 +4,11 @@
 
 **Install / setup page:** [ckaraman.github.io/plane-radar-clock](https://ckaraman.github.io/plane-radar-clock) · **Firmware:** [Releases](https://github.com/ckaraman/plane-radar-clock/releases)
 
-Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (240×240). Shows a circular **ADS-B radar** around your configured location, with **WiFiManager** for first-time setup.
+Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (240×240). Shows a circular **ADS-B radar** around your configured location, set up from a computer over USB (no Wi‑Fi access point, no web server on the device).
 
 ## What it does
 
-1. **Wi‑Fi setup** (if needed) — captive portal on AP **`PlaneRadar-Setup`**
+1. **Setup** (if needed) — USB setup page in Chrome/Edge (see below)
 2. **Radar** — live aircraft from [adsb.fi](https://opendata.adsb.fi/) on a sonar-style grid
 
 After Wi‑Fi is saved, the device reconnects automatically; the radar runs in the main loop with periodic ADS-B updates (~5 s).
@@ -18,26 +18,15 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 | Action | Effect |
 |--------|--------|
 | **Short tap** | Cycle range preset (5 → 10 → 15 → 17 → 25 km; the map layer is not drawn on the widest 25 km range, outer edge ~33 km); saved to flash |
-| **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
+| **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into the USB setup screen |
 
 During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
 
-## Wi‑Fi setup portal
+## Setup (USB only)
 
-**First-time setup** (no saved Wi‑Fi):
+The device has **no Wi‑Fi setup portal and no web server**: nothing on the network can change its settings. Everything is set from the [setup page](https://ckaraman.github.io/plane-radar-clock) over USB (Chrome or Edge). A device without saved Wi‑Fi shows the yellow setup screen until it is configured; to change anything later, plug it in and use the same page.
 
-1. Connect to **`PlaneRadar-Setup`**
-2. Open **`http://plane-radar.local`** (preferred) or **`http://192.168.4.1`** — both are shown on the yellow setup screen; captive portal may open automatically
-3. Set home Wi‑Fi, then save
-
-**Reconfigure anytime** (after the device is on your network):
-
-1. Open **`http://plane-radar.local`** or **`http://<device-ip>`** (e.g. from your router or serial log at boot)
-2. Change Wi‑Fi, location, units, or runway overlay; save
-
-The same portal runs on the setup AP and on the device’s LAN IP while connected to Wi‑Fi. mDNS hostname is `plane-radar` → **plane-radar.local** (`kPortalHostname` in `config.h`). Some clients resolve `.local` slowly; use the IP if needed.
-
-**Custom fields** (stored in NVS):
+**Settings** (stored in NVS):
 
 | Field | Purpose |
 |-------|---------|
@@ -67,7 +56,7 @@ The page talks to the firmware over the USB serial port with a line protocol (`P
 
 To publish: in the repository, **Settings → Pages → Source: GitHub Actions**. Every push to `main` builds the firmware and redeploys the site. Bump `kFirmwareVersion` in `config.h` for each release, the page compares it with the version on the device.
 
-To flash devices before shipping, write `firmware-merged.bin` at `0x0` (the *Full install* button does this, or `esptool`). A device without saved Wi-Fi shows the yellow setup screen and can still be set up through the old Wi-Fi portal (`PlaneRadar-Setup`, no password).
+To flash devices before shipping, write `firmware-merged.bin` at `0x0` (the *Full install* button does this, or `esptool`). A device without saved Wi-Fi shows the yellow setup screen and waits for the USB setup page.
 
 ## Display options
 
@@ -104,7 +93,7 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace).
 ### Runways
 
 - Major airports from OurAirports (`large_airport`); all open runway strips in range (helipads excluded)
-- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); toggle in the Wi‑Fi setup portal
+- Teal runway lines with one ICAO label per airport (e.g. `KJFK`); toggle on the setup page
 - Update the embedded list: `python3 scripts/build_large_airports.py`
 
 ### Aircraft
@@ -128,11 +117,10 @@ Edit **`include/config.h`** for hardware and behavior:
 
 | Area | Keys / notes |
 |------|----------------|
-| Portal | `kPortalApName`, `kPortalIp`, `kPortalHostname` / `kPortalHostUrl` (mDNS; needs `-DWM_MDNS` in `platformio.ini`) |
-| Wi‑Fi timing | connect attempts, reconnect grace, portal timeout (`0` = no timeout) |
+| Wi‑Fi timing | connect attempts, reconnect grace |
 | BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
 | Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
-| Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
+| Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until the setup page overrides) |
 | ADS-B | `kAdsbFetchIntervalMs`, `kAdsbShowGroundAircraft` |
 
 Range presets: `include/ui/radar_range.h` (`kRangePresets`).
@@ -238,7 +226,6 @@ The release workflow builds firmware in CI and attaches the merged image to the 
 ## Dependencies
 
 - [LovyanGFX](https://github.com/lovyan03/LovyanGFX)
-- [WiFiManager](https://github.com/tzapu/WiFiManager)
 - [ArduinoJson](https://github.com/bblanchon/ArduinoJson)
 
 ## Credits and licenses
@@ -247,4 +234,4 @@ The release workflow builds firmware in CI and attaches the merged image to the 
 - Aircraft data: [adsb.fi open data](https://opendata.adsb.fi/) (check its terms of use before any commercial use).
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL), fetched through the Overpass API by the setup page.
 - Time zone table: [posix_tz_db](https://github.com/nayarsystems/posix_tz_db) (MIT).
-- Libraries: LovyanGFX, WiFiManager, ArduinoJson (see Dependencies above; each under its own license).
+- Libraries: LovyanGFX, ArduinoJson (see Dependencies above; each under its own license).
