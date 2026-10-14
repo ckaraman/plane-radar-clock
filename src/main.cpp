@@ -11,11 +11,13 @@
 #include "services/clock_service.h"
 #include "services/map_store.h"
 #include "services/radar_location.h"
+#include "services/weather_service.h"
 #include "services/wifi_setup.h"
 #include "ui/clock_display.h"
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
+#include "ui/weather_display.h"
 
 namespace {
 
@@ -27,9 +29,15 @@ unsigned long g_last_redraw_ms = 0;
 // Which screen is up while connected. The clock replaces the radar while the
 // sky has been empty for config::kClockIdleDelayMs, and hands back the moment
 // an aircraft shows up (or the BOOT button is tapped).
-enum class Screen { Radar, Clock };
+enum class Screen { Radar, Clock, Weather };
 Screen g_screen = Screen::Radar;
 unsigned long g_last_aircraft_ms = 0;
+
+// Every config::kWeatherEveryMs of radar/clock time the weather screen takes over
+// for config::kWeatherShowMs. New aircraft do not cut it short; when it ends the
+// normal rule decides again (aircraft -> radar, empty sky -> clock).
+unsigned long g_main_since_ms = 0;
+unsigned long g_weather_started_ms = 0;
 
 void showRadarIfConnected() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -39,6 +47,7 @@ void showRadarIfConnected() {
   services::clock::startSync();  // no-op after the first call
   g_screen = Screen::Radar;
   g_last_aircraft_ms = millis();
+  g_main_since_ms = millis();
   ui::radarDisplayDraw();
   g_radar_visible = true;
 }
@@ -54,6 +63,21 @@ void updateScreen() {
     g_last_aircraft_ms = now;
   }
 
+  if (g_screen == Screen::Weather) {
+    if (now - g_weather_started_ms < config::kWeatherShowMs) {
+      ui::weatherDisplayTick();
+      return;
+    }
+    g_main_since_ms = now;  // next weather screen is due a full cycle from now
+  } else if (services::weather::enabled() &&
+             now - g_main_since_ms >= config::kWeatherEveryMs &&
+             services::weather::snapshot(nullptr, nullptr)) {
+    g_screen = Screen::Weather;
+    g_weather_started_ms = now;
+    ui::weatherDisplayEnter();
+    return;
+  }
+
   const bool idle = services::clock::enabled() && services::clock::synced() &&
                     now - g_last_aircraft_ms >= config::kClockIdleDelayMs;
 
@@ -66,15 +90,21 @@ void updateScreen() {
     return;
   }
 
-  if (g_screen == Screen::Clock) {
+  if (g_screen != Screen::Radar) {
     g_screen = Screen::Radar;
-    ui::radarDisplayDraw();  // full redraw over the clock
+    ui::radarDisplayDraw();  // full redraw over the clock / weather screen
     return;
   }
   ui::radarDisplayRefreshAircraft();
 }
 
 void onRangeTap() {
+  if (g_screen == Screen::Weather) {
+    // Tap ends the weather screen early and goes back to the radar.
+    g_last_aircraft_ms = millis();
+    g_weather_started_ms = millis() - config::kWeatherShowMs;
+    return;
+  }
   if (g_screen == Screen::Clock) {
     // First tap only wakes the radar; the range stays as it was. The idle timer
     // restarts, so the clock returns after another kClockIdleDelayMs of silence.
@@ -109,6 +139,8 @@ void adsbFetchTask(void*) {
       services::adsb::fetchUpdate(services::location::lat(),
                                   services::location::lon(),
                                   ui::radar::fetchRadiusKm());
+      services::weather::fetchIfDue(services::location::lat(),
+                                    services::location::lon());
     }
     vTaskDelay(pdMS_TO_TICKS(config::kAdsbFetchIntervalMs));
   }
@@ -133,6 +165,7 @@ void setup() {
   services::location::init();
   services::map::init();
   services::clock::init();  // before WiFi setup: the portal prefills from it
+  services::weather::init();
   ui::radar::rangeInit();
   services::adsb::init();
 

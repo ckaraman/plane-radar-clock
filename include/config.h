@@ -8,7 +8,7 @@ namespace config {
 
 /** Shown on the web setup page; the build copies it into the update manifest.
  *  Bump it for every release you publish. Keep this declaration on a single line. */
-constexpr char kFirmwareVersion[] = "1.6.0";
+constexpr char kFirmwareVersion[] = "1.7.0";
 
 // --- USB setup page address shown on the setup screen ---
 // CI writes include/setup_url.h with the GitHub Pages address of this repository
@@ -79,6 +79,17 @@ constexpr char kNtpServer2[] = "time.google.com";
 constexpr unsigned long kClockIdleDelayMs = 15000;
 /** true = Turkish day/month abbreviations (PZT, EKI...), false = English. */
 constexpr bool kClockTurkishDate = true;
+
+// --- Weather screen (Open-Meteo) ---
+/** Radar/clock runs this long between two weather screens. */
+constexpr unsigned long kWeatherEveryMs = 120000;
+/** How long the weather screen stays up (a new aircraft does not interrupt it). */
+constexpr unsigned long kWeatherShowMs = 15000;
+/** Re-download the forecast this often. */
+constexpr unsigned long kWeatherRefreshMs = 600000;
+/** After a failed download, wait this long before trying again. */
+constexpr unsigned long kWeatherRetryMs = 60000;
+
 
 // --- UI colors (RGB565) — status screens ---
 constexpr uint16_t kColorBlack = 0x0000;

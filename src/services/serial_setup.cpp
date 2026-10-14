@@ -13,6 +13,7 @@
 
 #include "config.h"
 #include "services/clock_service.h"
+#include "services/weather_service.h"
 #include "services/map_store.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
@@ -93,6 +94,7 @@ void sendHello() {
   doc["miles"] = ui::radar::useMiles();
   doc["runways"] = ui::radar::showRunways();
   doc["rings"] = ui::radar::showRings();
+  doc["weather"] = services::weather::enabled();
   doc["map"] = static_cast<uint32_t>(services::map::size());
   doc["mapv"] = services::map::kBlobVersion;
   sendReply("HELLO", doc);
@@ -274,6 +276,9 @@ void handleSet(const char* json) {
   }
   if (doc["runways"].is<bool>()) {
     ui::radar::saveRunwaysFromPortal(doc["runways"].as<bool>() ? "T" : "");
+  }
+  if (doc["weather"].is<bool>()) {
+    services::weather::saveFromPortal(doc["weather"].as<bool>() ? "T" : "");
   }
   if (doc["rings"].is<bool>()) {
     ui::radar::saveRingsFromPortal(doc["rings"].as<bool>() ? "T" : "");

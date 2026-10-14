@@ -35,6 +35,11 @@ The device has **no Wi‑Fi setup portal and no web server**: nothing on the net
 | **Show airport runways** | Major-airport runway overlay on the radar (off to hide) |
 | **Time zone** | POSIX TZ string for the idle clock; the drop-down above it fills in common zones (default in `config.h`, `kDefaultTimezone`) |
 | **Show clock when no aircraft** | Turns the idle clock on/off |
+| **Show weather** | Turns the weather screen on/off (default on) |
+
+### Weather screen
+
+Every 2 minutes (`kWeatherEveryMs`) the radar or idle clock is replaced for 15 seconds (`kWeatherShowMs`) by the weather at your configured location: current temperature and conditions, and the forecast for about two hours later. A new aircraft does not cut it short; when it ends the radar returns if aircraft are around, otherwise the clock. A short BOOT tap ends it early. The forecast comes from [Open-Meteo](https://open-meteo.com/) and is refreshed every 10 minutes; it can be switched off on the setup page. Condition names are in Turkish (ASCII only).
 
 ### Idle clock
 
@@ -233,5 +238,6 @@ The release workflow builds firmware in CI and attaches the merged image to the 
 - This firmware started from [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) (MIT, © 2026 MatixYo). The MIT license text and that copyright line are kept in [LICENSE](LICENSE); the clock, USB setup page, map layer and the other additions are by ckaraman, under the same MIT license.
 - Aircraft data: [adsb.fi open data](https://opendata.adsb.fi/) (check its terms of use before any commercial use).
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL), fetched through the Overpass API by the setup page.
+- Weather: [Open-Meteo.com](https://open-meteo.com/) (data under CC BY 4.0; the free API is for non-commercial use, check its terms before selling devices).
 - Time zone table: [posix_tz_db](https://github.com/nayarsystems/posix_tz_db) (MIT).
 - Libraries: LovyanGFX, ArduinoJson (see Dependencies above; each under its own license).

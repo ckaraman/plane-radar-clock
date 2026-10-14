@@ -166,6 +166,7 @@
 
       <div class="checks">
         <label><input type="checkbox" id="opt-clock" checked> Gökyüzünde uçak yokken saati göster</label>
+        <label><input type="checkbox" id="opt-weather" checked> Hava durumunu göster (2 dakikada bir 15 saniye; şu an ve 2 saat sonrası)</label>
         <label><input type="checkbox" id="opt-miles"> Mesafeleri mil olarak göster</label>
         <label><input type="checkbox" id="opt-runways" checked> Havalimanı pistlerini göster</label>
         <label><input type="checkbox" id="opt-rings" checked> Radar halkalarını ve artı çizgilerini göster (kapatırsanız yalnızca harita, uçaklar ve yön harfleri görünür)</label>
@@ -222,6 +223,7 @@
     Harita çizgileri © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap katkıda bulunanları</a> (ODbL);
     Overpass servisinden indirilir, yalnızca seçtiğiniz konumun koordinatları gönderilir.
     Uçak verisi: <a href="https://opendata.adsb.fi/" target="_blank" rel="noopener">adsb.fi</a>.
+    Hava durumu: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
     Saat dilimi tablosu: <a href="https://github.com/nayarsystems/posix_tz_db" target="_blank" rel="noopener">posix_tz_db</a> (MIT).
   </footer>
 </main>
@@ -540,6 +542,8 @@
     }
     setZone(zoneForPosix(d.tz));
     $('#opt-clock').checked = !!d.clock;
+    $('#opt-weather').disabled = d.weather === undefined;   // old firmware: no weather screen
+    $('#opt-weather').checked = d.weather === undefined ? true : !!d.weather;
     $('#opt-miles').checked = !!d.miles;
     $('#opt-runways').checked = !!d.runways;
     $('#opt-rings').disabled = d.rings === undefined;   // old firmware: no ring option
@@ -1011,6 +1015,7 @@
       miles: $('#opt-miles').checked,
       runways: $('#opt-runways').checked,
     };
+    if (!$('#opt-weather').disabled) payload.weather = $('#opt-weather').checked;
     if (!$('#opt-rings').disabled) payload.rings = $('#opt-rings').checked;
     if (ssid.trim()) { payload.ssid = ssid; payload.pass = pass; }
 
