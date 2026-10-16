@@ -8,10 +8,14 @@ Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (
 
 ## What it does
 
-1. **Setup** (if needed) — USB setup page in Chrome/Edge (see below)
-2. **Radar** — live aircraft from [adsb.fi](https://opendata.adsb.fi/) on a sonar-style grid
+1. **Setup** (first start or after a reset) — yellow screen; configure from the USB setup page in Chrome/Edge (see below).
+2. **Radar** — live aircraft from [adsb.fi](https://opendata.adsb.fi/) on a sonar-style grid, optionally over a map (sea, coast, main roads).
+3. **Clock** — when the sky has been empty for 15 s, a large HH:MM with the date.
+4. **Weather** — every 2 minutes a 15 s screen with the temperature and conditions now and about two hours ahead.
 
-After Wi‑Fi is saved, the device reconnects automatically; the radar runs in the main loop with periodic ADS-B updates (~5 s).
+After Wi‑Fi is saved, the device reconnects automatically (it retries every 15 s if the network is gone); ADS-B is polled about every 5 s.
+
+**Limits:** it needs a Wi‑Fi network with a plain password (no SMS or browser login pages, no 802.1X). A phone hotspot works. There is no over-the-air update: firmware is updated from the setup page over USB.
 
 ## Controls (BOOT, GPIO 9, active LOW)
 
@@ -127,6 +131,8 @@ Edit **`include/config.h`** for hardware and behavior:
 | Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until the setup page overrides) |
 | ADS-B | `kAdsbFetchIntervalMs`, `kAdsbShowGroundAircraft` |
+| Clock | `kClockIdleDelayMs`, `kClockTurkishDate`, `kDefaultTimezone` |
+| Weather | `kWeatherEveryMs`, `kWeatherShowMs`, `kWeatherRefreshMs`, `kWeatherRetryMs` |
 
 Range presets: `include/ui/radar_range.h` (`kRangePresets`).
 
@@ -134,34 +140,30 @@ Range presets: `include/ui/radar_range.h` (`kRangePresets`).
 
 ```
 include/
-  config.h
-  hardware/
-    lgfx_config.hpp
-    display.h
-    display_font.h
-  data/
-    large_airports.h
+  config.h                  — hardware, timing and default settings
+  hardware/                 — display driver config, fonts
+  data/large_airports.h
+  services/
+    adsb_client.h           — adsb.fi fetch
+    clock_service.h         — NTP clock, time zone, on/off
+    weather_parse.h         — Open-Meteo JSON -> forecast (host-testable)
+    weather_service.h       — weather download + on/off
+    map_store.h             — map blob in the raw spiffs partition
+    radar_location.h        — saved latitude / longitude
+    serial_setup.h          — USB line protocol (docs inside)
+    wifi_setup.h            — connect/reconnect, BOOT button
   ui/
-    radar_theme.h
-    radar_range.h
-    radar_display.h
-    runway_overlay.h
+    radar_theme.h, radar_range.h, radar_display.h
+    map_overlay.h, runway_overlay.h, aircraft_icon.h
+    clock_display.h
+    weather_display.h, weather_icons.h
     status_screens.h
-  services/
-    wifi_setup.h
-    radar_location.h
-    adsb_client.h
-data/
-  ui_font.vlw              — embedded smooth UI font (Noto Sans Bold)
-scripts/
-  build_large_airports.py
-src/
-  main.cpp
-  data/
-    large_airports_data.cpp
-  hardware/
-  ui/
-  services/
+web/index.html              — USB setup + update page (GitHub Pages)
+data/ui_font.vlw            — embedded smooth UI font (Noto Sans Bold)
+partitions/                 — partition table
+scripts/                    — airport list, firmware merge
+src/                        — implementations, main.cpp (screen cycle)
+.github/workflows/          — build, release, Pages deploy
 ```
 
 ## Wiring (GC9A01 ↔ ESP32-C3 Super Mini)
@@ -175,7 +177,7 @@ src/
 | DC | GPIO **10** |
 | SDA (MOSI) | GPIO **3** |
 | SCL (SCLK) | GPIO **4** |
-| BOOT (user) | GPIO **9** |
+| *(none)* | **BOOT button, GPIO 9:** already on the Super Mini board, nothing to wire. Short tap = range, hold 3 s = reset. An external normally-open button between GPIO 9 and GND does the same. |
 
 ## Build
 
@@ -232,6 +234,13 @@ The release workflow builds firmware in CI and attaches the merged image to the 
 
 - [LovyanGFX](https://github.com/lovyan03/LovyanGFX)
 - [ArduinoJson](https://github.com/bblanchon/ArduinoJson)
+
+## Not done yet
+
+- Flight origin/destination on the radar (idea: look up the callsign on adsbdb.com).
+- Over-the-air updates and per-device location management.
+- Wi‑Fi networks that need a browser login (captive portal) or 802.1X.
+- An offline ADS-B receiver (1090 MHz) instead of the internet feed.
 
 ## Credits and licenses
 
