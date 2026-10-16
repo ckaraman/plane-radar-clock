@@ -1079,6 +1079,32 @@
   }
 
   // ------------------------------------------------------------------ init
+  // ESP Web Tools shows "Installation complete / Next" and then drops back to its install menu
+  // (it only closes with the small X). Close the dialog ourselves once "Next" was pressed after a
+  // finished install. Uses the dialog's own fields; if a future version renames them nothing happens.
+  let installWatch = null;
+  function watchInstallDialog() {
+    if (installWatch) clearInterval(installWatch);
+    const started = Date.now();
+    let seen = false, finished = false;
+    installWatch = setInterval(() => {
+      const dlg = document.querySelector('ewt-install-dialog');
+      if (!dlg) {
+        if (seen || Date.now() - started > 30 * 60 * 1000) { clearInterval(installWatch); installWatch = null; }
+        return;
+      }
+      seen = true;
+      try {
+        if (dlg._installState && dlg._installState.state === 'finished') finished = true;
+        if (finished && dlg._state === 'DASHBOARD') {
+          clearInterval(installWatch); installWatch = null;
+          try { dlg._closeDialog(); } catch (_) { dlg.remove(); document.body.style.overflow = ''; }
+          setMsg($('#msg-version'), 'ok', 'Yazılım yüklendi. Ayarlarınız duruyor; devam etmek için 1. adımdan cihaza yeniden bağlanın.');
+        }
+      } catch (_) { /* optional */ }
+    }, 250);
+  }
+
   function init() {
     if (!('serial' in navigator)) {
       $('#unsupported').hidden = false;
@@ -1113,7 +1139,7 @@
     });
     // The update tool needs the USB port to itself.
     for (const id of ['#install-update', '#install-full']) {
-      $(id).addEventListener('click', () => { if (state.port) { state.expectingDrop = false; disconnect(); } }, true);
+      $(id).addEventListener('click', () => { if (state.port) { state.expectingDrop = false; disconnect(); } watchInstallDialog(); }, true);
     }
     renderConnection();
     loadZones();
