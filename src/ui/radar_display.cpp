@@ -74,6 +74,9 @@ int measureGfxHeight(const lgfx::GFXfont& font) {
 }
 
 int measureVlwHeight(float size) {
+  // The clock and weather screens leave a bitmap font on tft; measuring with that one
+  // would give a far too small scale factor, so make sure the smooth font is active.
+  displayFontEnsureLoaded(tft);
   tft.setTextSize(size);
   return tft.fontHeight();
 }
@@ -93,6 +96,7 @@ float findVlwSizeForHeight(int target_px) {
 }
 
 void applyScaleStyle();
+void initTagLabelMetrics();
 
 const lgfx::GFXfont* pickGfxFontClosest(
     int target_px, const lgfx::GFXfont* const* candidates, size_t count) {
@@ -154,6 +158,7 @@ void initLabelMetrics() {
   }
 
   s_label_metrics_ready = true;
+  initTagLabelMetrics();  // measure the aircraft tag font now, while the radar font is active
 }
 
 void initTagLabelMetrics() {
